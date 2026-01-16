@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import argparse
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +22,10 @@ FREE_FALL_THRESHOLD_G = -0.85
 
 # Masses from OpenSim fullbody model
 MASSES_JSON_PATH = Path(__file__).parent / 'opensim' / 'fullbody.json'
+
+# Drop inputs
+DROPS_DIR = Path(__file__).parent / 'drops'
+DROPS_PATTERN = '*.csv'
 
 # Yoganandan calibration data directory
 YOGANANDAN_DIR = Path(__file__).parent / 'yoganandan'
@@ -345,11 +349,8 @@ def write_timeseries_csv(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description='Spine chain simulation and calibration')
-    parser.add_argument('--config', required=True, type=Path, help='Config JSON')
-    args = parser.parse_args()
-
-    config = json.loads(args.config.read_text(encoding='utf-8'))
+    config_path = Path(__file__).parent / 'config.json'
+    config = json.loads(config_path.read_text(encoding='utf-8'))
 
     # Load masses from hardcoded path
     masses = load_masses_json(MASSES_JSON_PATH)
@@ -387,19 +388,12 @@ def main() -> None:
         model = apply_calibration(model, calib.scales)
 
     # Drop simulations
-    drops_cfg = config['drops']
-    input_dir = Path(drops_cfg['input_dir'])
-    pattern = drops_cfg.get('pattern', '*.csv')
-
-    cfc = CFC
-    peak_g = PEAK_THRESHOLD_G
-    freefall_g = FREE_FALL_THRESHOLD_G
-
-    drop_files = sorted(input_dir.glob(pattern))
+    drop_files = sorted(DROPS_DIR.glob(DROPS_PATTERN))
     summary = []
 
     for fpath in drop_files:
-        t, a_base_g = process_drop_csv(fpath, cfc=cfc, peak_g=peak_g, freefall_g=freefall_g)
+        print(f'Processing {fpath.name}...')
+        t, a_base_g = process_drop_csv(fpath, cfc=CFC, peak_g=PEAK_THRESHOLD_G, freefall_g=FREE_FALL_THRESHOLD_G)
 
         # Initial state in freefall baseline (a_base near -g)
         y0 = np.zeros(model.size(), dtype=float)
@@ -410,7 +404,9 @@ def main() -> None:
         f_t12 = forces[:, t12_elem_idx]
 
         run_dir = out_dir / fpath.stem
-        run_dir.mkdir(parents=True, exist_ok=True)
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
+        run_dir.mkdir(parents=True)
 
         # CSV
         write_timeseries_csv(
