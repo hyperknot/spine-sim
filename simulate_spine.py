@@ -2,21 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from spine_sim.calibration import YogCase, apply_calibration, calibrate_to_yoganandan
 from spine_sim.filters import cfc_filter
-from spine_sim.io import TimeSeries, parse_csv_series, resample_to_uniform
-from spine_sim.model import SpineModel, initial_state_static, newmark_linear
+from spine_sim.io import parse_csv_series, resample_to_uniform
+from spine_sim.model import SpineModel, newmark_linear
 from spine_sim.plotting import plot_displacement_colored_by_force, plot_displacements, plot_forces
 from spine_sim.range import find_first_hit_range
-
-
-def normalize_name(name: str) -> str:
-    return ''.join(c for c in name.lower() if c.isalnum())
 
 
 def load_masses_json(path: Path) -> dict:
@@ -24,56 +18,52 @@ def load_masses_json(path: Path) -> dict:
         return json.load(f)
 
 
-def sum_masses_by_patterns(masses: dict, patterns: list[str]) -> tuple[float, list[str]]:
-    matched = []
-    total = 0.0
-    for name, m in masses.items():
-        n = normalize_name(name)
-        if any(p in n for p in patterns):
-            matched.append(name)
-            total += m
-    return total, matched
-
-
 def build_mass_map(masses: dict, arm_recruitment: float, helmet_mass: float) -> dict:
-    body_masses = masses['bodies']
+    """Build mass map using exact body names from OpenSim fullbody model.
 
-    # Pelvis
-    pelvis_mass, pelvis_names = sum_masses_by_patterns(body_masses, ['pelvis'])
+    Body name mapping (from fullbody.json):
+    - Spine: pelvis, lumbar1-5, thoracic1-12
+    - Head: head_neck (includes head + cervical spine, combined in this model)
+    - Arms: humerus_R/L, ulna_R/L, radius_R/L, hand_R/L
 
-    # Lumbar and thoracic
-    def find_level_mass(level: str) -> float:
-        # level like "l1", "t12"
-        patterns = [
-            f'lumbar{level[1:]}' if level.startswith('l') else f'thoracic{level[1:]}',
-            f'{level}',
-        ]
-        total, names = sum_masses_by_patterns(body_masses, patterns)
-        return total
+    Excluded per README design decisions:
+    - Legs (not in axial load path)
+    - Ribs, sternum, clavicle, scapula (negligible mass, 0.0001 kg each)
+    - Sacrum, Abdomen markers (negligible)
+    """
+    b = masses['bodies']
 
-    lumbar_levels = ['l5', 'l4', 'l3', 'l2', 'l1']
-    thoracic_levels = [f't{n}' for n in range(12, 0, -1)]
+    # Arms: sum bilateral parts, apply recruitment factor
+    arm_mass = (
+        b['humerus_R'] + b['humerus_L']
+        + b['ulna_R'] + b['ulna_L']
+        + b['radius_R'] + b['radius_L']
+        + b['hand_R'] + b['hand_L']
+    ) * arm_recruitment
 
-    lumbar_masses = {lvl: find_level_mass(lvl) for lvl in lumbar_levels}
-    thoracic_masses = {lvl: find_level_mass(lvl) for lvl in thoracic_levels}
-
-    # Head + cervical
-    head_mass, head_names = sum_masses_by_patterns(body_masses, ['head', 'skull'])
-    cerv_mass, cerv_names = sum_masses_by_patterns(body_masses, ['cerv'])
-
-    # Arms
-    arm_mass, arm_names = sum_masses_by_patterns(
-        body_masses,
-        ['humerus', 'ulna', 'radius', 'hand', 'clavicle', 'scapula'],
-    )
-    arm_mass *= arm_recruitment
-
-    head_total = head_mass + cerv_mass + helmet_mass + arm_mass
+    # head_neck includes both head and cervical spine in this thoracolumbar model.
+    # Add helmet mass and recruited arm mass to the head node.
+    head_total = b['head_neck'] + helmet_mass + arm_mass
 
     return {
-        'pelvis': pelvis_mass,
-        **lumbar_masses,
-        **thoracic_masses,
+        'pelvis': b['pelvis'],
+        'l5': b['lumbar5'],
+        'l4': b['lumbar4'],
+        'l3': b['lumbar3'],
+        'l2': b['lumbar2'],
+        'l1': b['lumbar1'],
+        't12': b['thoracic12'],
+        't11': b['thoracic11'],
+        't10': b['thoracic10'],
+        't9': b['thoracic9'],
+        't8': b['thoracic8'],
+        't7': b['thoracic7'],
+        't6': b['thoracic6'],
+        't5': b['thoracic5'],
+        't4': b['thoracic4'],
+        't3': b['thoracic3'],
+        't2': b['thoracic2'],
+        't1': b['thoracic1'],
         'head': head_total,
     }
 
