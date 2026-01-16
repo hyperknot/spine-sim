@@ -3,7 +3,7 @@
     "arm_recruitment": 0.5,
     "helmet_mass_kg": 0.7
   },
-  "yoganandan": {
+  "__yoganandan": {
     "cases": [
       {
         "name": "50ms",
