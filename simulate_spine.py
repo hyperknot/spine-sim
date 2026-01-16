@@ -1,3 +1,5 @@
+#!/usr/bin/env -S uv run
+
 from __future__ import annotations
 
 import argparse
@@ -11,6 +13,7 @@ from spine_sim.io import parse_csv_series, resample_to_uniform
 from spine_sim.model import SpineModel, newmark_linear
 from spine_sim.plotting import plot_displacement_colored_by_force, plot_displacements, plot_forces
 from spine_sim.range import find_first_hit_range
+
 
 # Processing constants
 CFC = 75
@@ -50,10 +53,14 @@ def build_mass_map(masses: dict, arm_recruitment: float, helmet_mass: float) -> 
 
     # Arms: sum bilateral parts, apply recruitment factor
     arm_mass = (
-        b['humerus_R'] + b['humerus_L']
-        + b['ulna_R'] + b['ulna_L']
-        + b['radius_R'] + b['radius_L']
-        + b['hand_R'] + b['hand_L']
+        b['humerus_R']
+        + b['humerus_L']
+        + b['ulna_R']
+        + b['ulna_L']
+        + b['radius_R']
+        + b['radius_L']
+        + b['hand_R']
+        + b['hand_L']
     ) * arm_recruitment
 
     # head_neck includes both head and cervical spine in this thoracolumbar model.
@@ -267,7 +274,9 @@ def load_yog_cases(cases_config: list[dict]) -> list[YogCase]:
         force_series, _ = resample_to_uniform(force_series)
 
         accel_g = np.asarray(accel_series.values, dtype=float)
-        force_n = np.asarray(force_series.values, dtype=float) * 1000.0 * YOGANANDAN_FORCE_SIGN  # kN -> N
+        force_n = (
+            np.asarray(force_series.values, dtype=float) * 1000.0 * YOGANANDAN_FORCE_SIGN
+        )  # kN -> N
 
         cases.append(
             YogCase(
