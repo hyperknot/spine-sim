@@ -11,7 +11,11 @@ from spine_sim.calibration import YogCase, apply_calibration, calibrate_to_yogan
 from spine_sim.filters import cfc_filter
 from spine_sim.io import parse_csv_series, resample_to_uniform
 from spine_sim.model import SpineModel, newmark_linear
-from spine_sim.plotting import plot_displacement_colored_by_force, plot_displacements, plot_forces
+from spine_sim.plotting import (
+    plot_displacement_colored_by_force,
+    plot_displacements,
+    plot_forces,
+)
 from spine_sim.range import find_first_hit_range
 
 
@@ -41,21 +45,9 @@ def load_masses_json(path: Path) -> dict:
 
 
 def build_mass_map(masses: dict, arm_recruitment: float, helmet_mass: float) -> dict:
-    """Build mass map using exact body names from OpenSim fullbody model.
-
-    Body name mapping (from fullbody.json):
-    - Spine: pelvis, lumbar1-5, thoracic1-12
-    - Head: head_neck (includes head + cervical spine, combined in this model)
-    - Arms: humerus_R/L, ulna_R/L, radius_R/L, hand_R/L
-
-    Excluded per README design decisions:
-    - Legs (not in axial load path)
-    - Ribs, sternum, clavicle, scapula (negligible mass, 0.0001 kg each)
-    - Sacrum, Abdomen markers (negligible)
-    """
+    """Build mass map using exact body names from OpenSim fullbody model."""
     b = masses['bodies']
 
-    # Arms: sum bilateral parts, apply recruitment factor
     arm_mass = (
         b['humerus_R']
         + b['humerus_L']
@@ -67,8 +59,6 @@ def build_mass_map(masses: dict, arm_recruitment: float, helmet_mass: float) -> 
         + b['hand_L']
     ) * arm_recruitment
 
-    # head_neck includes both head and cervical spine in this thoracolumbar model.
-    # Add helmet mass and recruited arm mass to the head node.
     head_total = b['head_neck'] + helmet_mass + arm_mass
 
     return {
@@ -352,11 +342,14 @@ def main() -> None:
     config_path = Path(__file__).parent / 'config.json'
     config = json.loads(config_path.read_text(encoding='utf-8'))
 
-    # Load masses from hardcoded path
-    masses = load_masses_json(MASSES_JSON_PATH)
+    # Load masses and heights from OpenSim model data
+    masses_data = load_masses_json(MASSES_JSON_PATH)
     arm_recruitment = float(config['model'].get('arm_recruitment', 0.5))
     helmet_mass = float(config['model'].get('helmet_mass_kg', 0.7))
-    mass_map = build_mass_map(masses, arm_recruitment=arm_recruitment, helmet_mass=helmet_mass)
+    mass_map = build_mass_map(masses_data, arm_recruitment=arm_recruitment, helmet_mass=helmet_mass)
+
+    # Get heights from OpenSim if available
+    heights_from_model = masses_data.get('heights_relative_to_pelvis_mm', None)
 
     model = build_spine_model(mass_map)
 
@@ -380,6 +373,7 @@ def main() -> None:
                     'success': calib.success,
                     'cost': calib.cost,
                     'residual_norm': calib.residual_norm,
+                    'note': 'If s_k_spine < 1, model is softer than baseline - causes excessive compression',
                 },
                 indent=2,
             )
@@ -387,21 +381,36 @@ def main() -> None:
 
         model = apply_calibration(model, calib.scales)
 
+        print(f'Calibration complete:')
+        print(f'  s_k_spine = {calib.scales["s_k_spine"]:.3f}')
+        print(f'  s_c_spine = {calib.scales["s_c_spine"]:.3f}')
+        print(f'  s_k_butt  = {calib.scales["s_k_butt"]:.3f}')
+        print(f'  s_c_butt  = {calib.scales["s_c_butt"]:.3f}')
+
     # Drop simulations
     drop_files = sorted(DROPS_DIR.glob(DROPS_PATTERN))
     summary = []
 
     for fpath in drop_files:
         print(f'Processing {fpath.name}...')
-        t, a_base_g = process_drop_csv(fpath, cfc=CFC, peak_g=PEAK_THRESHOLD_G, freefall_g=FREE_FALL_THRESHOLD_G)
+        t, a_base_g = process_drop_csv(
+            fpath, cfc=CFC, peak_g=PEAK_THRESHOLD_G, freefall_g=FREE_FALL_THRESHOLD_G
+        )
 
-        # Initial state in freefall baseline (a_base near -g)
+        # Initial state in freefall baseline
         y0 = np.zeros(model.size(), dtype=float)
         v0 = np.zeros(model.size(), dtype=float)
 
         sim = newmark_linear(model, t, a_base_g, y0, v0)
         forces = sim.element_forces_n
         f_t12 = forces[:, t12_elem_idx]
+
+        # Compute compression metrics
+        head_idx = model.node_names.index('HEAD')
+        pelvis_idx = model.node_names.index('pelvis')
+        max_head_compression_mm = -np.min(sim.y[:, head_idx]) * 1000.0
+        max_pelvis_compression_mm = -np.min(sim.y[:, pelvis_idx]) * 1000.0
+        max_spine_shortening_mm = max_head_compression_mm - max_pelvis_compression_mm
 
         run_dir = out_dir / fpath.stem
         if run_dir.exists():
@@ -419,13 +428,25 @@ def main() -> None:
             forces,
         )
 
-        # Charts
-        plot_displacements(sim.time_s, sim.y, model.node_names, run_dir / 'displacements.png')
+        # Charts with OpenSim heights
+        plot_displacements(
+            sim.time_s,
+            sim.y,
+            model.node_names,
+            run_dir / 'displacements.png',
+            heights_from_model=heights_from_model,
+        )
         plot_forces(
             sim.time_s, forces, model.element_names, run_dir / 'forces.png', highlight='T12-L1'
         )
         plot_displacement_colored_by_force(
-            sim.time_s, sim.y, forces, model.node_names, model.element_names, run_dir / 'mixed.png'
+            sim.time_s,
+            sim.y,
+            forces,
+            model.node_names,
+            model.element_names,
+            run_dir / 'mixed.png',
+            heights_from_model=heights_from_model,
         )
 
         summary.append(
@@ -433,8 +454,15 @@ def main() -> None:
                 'file': fpath.name,
                 'peak_T12_L1_kN': float(np.max(f_t12) / 1000.0),
                 'time_to_peak_ms': float(sim.time_s[np.argmax(f_t12)] * 1000.0),
+                'max_head_compression_mm': float(max_head_compression_mm),
+                'max_pelvis_compression_mm': float(max_pelvis_compression_mm),
+                'max_spine_shortening_mm': float(max_spine_shortening_mm),
             }
         )
+
+        print(f'  Peak T12-L1: {summary[-1]["peak_T12_L1_kN"]:.2f} kN')
+        print(f'  Head compression: {max_head_compression_mm:.1f} mm')
+        print(f'  Spine shortening: {max_spine_shortening_mm:.1f} mm')
 
     summary_path = out_dir / 'summary.json'
     summary_path.write_text(json.dumps(summary, indent=2))
