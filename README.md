@@ -1,6 +1,6 @@
 # Pelvis–Spine 1D Axial Shock Simulation (Base-Excitation From Drop Tests)
 
-This README captures the **full rationale, decisions, assumptions, and pipeline** for the project as discussed. It is intended to be a single authoritative specification that a human or an LLM can use to reproduce the approach.
+This README captures the **full rationale, decisions, assumptions, and pipeline** for the project as discussed.
 
 ---
 
@@ -72,7 +72,7 @@ We decided:
 
 Sampling:
 - 1000 Hz+
-- Data is already filtered via **CFC 75**, and is smooth.
+- Data is filtered via **CFC 75**, and is smooth.
 
 ### 3.2 Interpretation of measured acceleration
 Because:
