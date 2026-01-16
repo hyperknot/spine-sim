@@ -7,27 +7,65 @@ import numpy as np
 from matplotlib.collections import LineCollection
 
 
+# Anatomical heights above seat surface (ischial tuberosities) in mm
+# Source: Kitazaki & Griffin 1997, Table 1, "Normal posture"
+# These are the z-coordinates of vertebral body centers in the sagittal plane
+ANATOMICAL_HEIGHTS_MM: dict[str, float] = {
+    'pelvis': 132.38,  # S1 level (sacrum, base of spine chain)
+    'L5': 165.13,
+    'L4': 204.67,
+    'L3': 245.10,
+    'L2': 283.65,
+    'L1': 319.85,
+    'T12': 353.07,
+    'T11': 383.13,
+    'T10': 413.75,
+    'T9': 443.18,
+    'T8': 471.17,
+    'T7': 497.97,
+    'T6': 523.25,
+    'T5': 550.67,
+    'T4': 576.86,
+    'T3': 602.97,
+    'T2': 628.61,
+    'T1': 654.63,
+    'HEAD': 802.50,
+}
+
+
+def _get_initial_heights(node_names: list[str]) -> np.ndarray:
+    """Get anatomical heights for nodes, with fallback for unknown names."""
+    heights = []
+    for name in node_names:
+        # Try exact match first, then case-insensitive
+        if name in ANATOMICAL_HEIGHTS_MM:
+            heights.append(ANATOMICAL_HEIGHTS_MM[name])
+        elif name.lower() in {k.lower() for k in ANATOMICAL_HEIGHTS_MM}:
+            key = next(k for k in ANATOMICAL_HEIGHTS_MM if k.lower() == name.lower())
+            heights.append(ANATOMICAL_HEIGHTS_MM[key])
+        else:
+            # Fallback: linear interpolation based on position
+            heights.append(100.0 + len(heights) * 35.0)
+    return np.array(heights, dtype=float)
+
+
 def plot_displacements(
     time_s: np.ndarray, y: np.ndarray, node_names: list[str], out_path: Path
 ) -> None:
     """Plot spine side view: height above base plate vs time.
 
-    Origin is at the base plate. Each body segment is stacked at a constant
-    level above the base. Displacements show how these levels move and compress
-    during impact - like viewing the pilot's spine from the side with a camera.
+    Origin is at the base plate (seat surface / ischial tuberosities level).
+    Each body segment is positioned at its anatomical height from Kitazaki &
+    Griffin 1997. Displacements show how these positions change during impact -
+    like viewing the pilot's spine from the side with a camera.
 
     If nothing happened (no impact), all lines would be parallel horizontal lines.
     During compression, the lines converge as segments are pushed together.
     """
-    # Anatomical spacing between segments (mm)
-    # Using approximate disc/segment heights for realistic visualization
-    level_spacing_mm = 25.0  # ~25mm between vertebral levels
-
     n_nodes = len(node_names)
 
-    # Initial heights: base at 0, pelvis at level 1, L5 at level 2, etc.
-    # Each node is stacked above the previous one
-    initial_heights_mm = np.array([(i + 1) * level_spacing_mm for i in range(n_nodes)])
+    # Get anatomical heights from Kitazaki & Griffin 1997
+    initial_heights_mm = _get_initial_heights(node_names)
 
     # Position at each time = initial height + displacement
     # y[:, i] is displacement in meters (positive = moved up relative to base)
@@ -52,7 +90,7 @@ def plot_displacements(
         )
 
     plt.xlabel('Time (ms)')
-    plt.ylabel('Height above base plate (mm)')
+    plt.ylabel('Height above seat (mm)')
     plt.title('Spine Side View - Segment Heights During Impact')
     plt.grid(True, alpha=0.3)
 
@@ -92,13 +130,12 @@ def plot_displacement_colored_by_force(
 
     Same as plot_displacements but each segment line is colored by the
     compressive force in the element below it. High forces show as bright colors.
+    Uses anatomical heights from Kitazaki & Griffin 1997.
     """
     fig, ax = plt.subplots(figsize=(14, 8))
 
-    # Anatomical spacing (same as plot_displacements)
-    level_spacing_mm = 25.0
-    n_nodes = len(node_names)
-    initial_heights_mm = np.array([(i + 1) * level_spacing_mm for i in range(n_nodes)])
+    # Get anatomical heights from Kitazaki & Griffin 1997
+    initial_heights_mm = _get_initial_heights(node_names)
 
     # Position = initial height + displacement
     positions_mm = initial_heights_mm[np.newaxis, :] + y * 1000.0
