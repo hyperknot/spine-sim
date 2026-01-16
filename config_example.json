@@ -1,0 +1,47 @@
+{
+  "masses_json": "masses.json",
+  "model": {
+    "arm_recruitment": 0.5,
+    "helmet_mass_kg": 0.7
+  },
+  "processing": {
+    "cfc": 75,
+    "peak_threshold_g": 5.0,
+    "free_fall_threshold_g": -0.85
+  },
+  "yoganandan": {
+    "force_sign": -1,
+    "cases": [
+      {
+        "name": "50ms",
+        "accel_csv": "yog_accel_50ms.csv",
+        "force_csv": "yog_force_50ms.csv"
+      },
+      {
+        "name": "75ms",
+        "accel_csv": "yog_accel_75ms.csv",
+        "force_csv": "yog_force_75ms.csv"
+      },
+      {
+        "name": "100ms",
+        "accel_csv": "yog_accel_100ms.csv",
+        "force_csv": "yog_force_100ms.csv"
+      },
+      {
+        "name": "150ms",
+        "accel_csv": "yog_accel_150ms.csv",
+        "force_csv": "yog_force_150ms.csv"
+      },
+      {
+        "name": "200ms",
+        "accel_csv": "yog_accel_200ms.csv",
+        "force_csv": "yog_force_200ms.csv"
+      }
+    ]
+  },
+  "drops": {
+    "input_dir": "drops",
+    "pattern": "*.csv"
+  },
+  "output_dir": "results"
+}
