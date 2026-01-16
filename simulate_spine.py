@@ -12,6 +12,21 @@ from spine_sim.model import SpineModel, newmark_linear
 from spine_sim.plotting import plot_displacement_colored_by_force, plot_displacements, plot_forces
 from spine_sim.range import find_first_hit_range
 
+# Processing constants
+CFC = 75
+PEAK_THRESHOLD_G = 5.0
+FREE_FALL_THRESHOLD_G = -0.85
+
+# Masses from OpenSim fullbody model
+MASSES_JSON_PATH = Path(__file__).parent / 'opensim' / 'fullbody.json'
+
+# Yoganandan calibration data directory
+YOGANANDAN_DIR = Path(__file__).parent / 'yoganandan'
+
+# Yoganandan force sign: -1 because their convention reports compression as negative,
+# but our model uses compression as positive
+YOGANANDAN_FORCE_SIGN = -1.0
+
 
 def load_masses_json(path: Path) -> dict:
     with path.open('r', encoding='utf-8') as f:
@@ -234,17 +249,16 @@ def build_spine_model(mass_map: dict) -> SpineModel:
     )
 
 
-def load_yog_cases(config: dict) -> list[YogCase]:
+def load_yog_cases(cases_config: list[dict]) -> list[YogCase]:
     cases = []
-    force_sign = config.get('force_sign', -1.0)
-    for c in config['cases']:
+    for c in cases_config:
         accel_series = parse_csv_series(
-            Path(c['accel_csv']),
+            YOGANANDAN_DIR / c['accel_csv'],
             time_candidates=['time', 'time0', 't'],
             value_candidates=['accel', 'acceleration'],
         )
         force_series = parse_csv_series(
-            Path(c['force_csv']),
+            YOGANANDAN_DIR / c['force_csv'],
             time_candidates=['time', 'time0', 't'],
             value_candidates=['force', 'spinal', 'load'],
         )
@@ -253,7 +267,7 @@ def load_yog_cases(config: dict) -> list[YogCase]:
         force_series, _ = resample_to_uniform(force_series)
 
         accel_g = np.asarray(accel_series.values, dtype=float)
-        force_n = np.asarray(force_series.values, dtype=float) * 1000.0 * force_sign  # kN -> N
+        force_n = np.asarray(force_series.values, dtype=float) * 1000.0 * YOGANANDAN_FORCE_SIGN  # kN -> N
 
         cases.append(
             YogCase(
@@ -328,8 +342,8 @@ def main() -> None:
 
     config = json.loads(args.config.read_text(encoding='utf-8'))
 
-    # Load masses
-    masses = load_masses_json(Path(config['masses_json']))
+    # Load masses from hardcoded path
+    masses = load_masses_json(MASSES_JSON_PATH)
     arm_recruitment = float(config['model'].get('arm_recruitment', 0.5))
     helmet_mass = float(config['model'].get('helmet_mass_kg', 0.7))
     mass_map = build_mass_map(masses, arm_recruitment=arm_recruitment, helmet_mass=helmet_mass)
@@ -345,7 +359,7 @@ def main() -> None:
     # Calibration
     calib_cfg = config.get('yoganandan')
     if calib_cfg:
-        cases = load_yog_cases(calib_cfg)
+        cases = load_yog_cases(calib_cfg['cases'])
         calib = calibrate_to_yoganandan(model, cases, t12_elem_idx)
 
         calib_out = out_dir / 'calibration_result.json'
@@ -368,9 +382,9 @@ def main() -> None:
     input_dir = Path(drops_cfg['input_dir'])
     pattern = drops_cfg.get('pattern', '*.csv')
 
-    cfc = float(config['processing'].get('cfc', 75))
-    peak_g = float(config['processing'].get('peak_threshold_g', 5.0))
-    freefall_g = float(config['processing'].get('free_fall_threshold_g', -0.85))
+    cfc = CFC
+    peak_g = PEAK_THRESHOLD_G
+    freefall_g = FREE_FALL_THRESHOLD_G
 
     drop_files = sorted(input_dir.glob(pattern))
     summary = []
