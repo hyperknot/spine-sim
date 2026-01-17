@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from spine_sim.calibration import YogCase, apply_calibration, calibrate_to_yoganandan
 from spine_sim.filters import cfc_filter
 from spine_sim.io import parse_csv_series, resample_to_uniform
-from spine_sim.model import SpineModel, newmark_linear
+from spine_sim.model import SpineModel, newmark_nonlinear
 from spine_sim.plotting import (
     plot_displacement_colored_by_force,
     plot_displacements,
@@ -24,229 +25,311 @@ CFC = 75
 PEAK_THRESHOLD_G = 5.0
 FREE_FALL_THRESHOLD_G = -0.85
 
+# Always simulate this long for drops (ms)
+DROP_SIM_DURATION_MS = 200.0
+
 # Masses from OpenSim fullbody model
-MASSES_JSON_PATH = Path(__file__).parent / 'opensim' / 'fullbody.json'
+MASSES_JSON_PATH = Path(__file__).parent / "opensim" / "fullbody.json"
 
 # Drop inputs
-DROPS_DIR = Path(__file__).parent / 'drops'
-DROPS_PATTERN = '*.csv'
+DROPS_DIR = Path(__file__).parent / "drops"
+DROPS_PATTERN = "*.csv"
 
 # Yoganandan calibration data directory
-YOGANANDAN_DIR = Path(__file__).parent / 'yoganandan'
+YOGANANDAN_DIR = Path(__file__).parent / "yoganandan"
 
 # Yoganandan force sign: -1 because their convention reports compression as negative,
 # but our model uses compression as positive
 YOGANANDAN_FORCE_SIGN = -1.0
 
 
+@dataclass
+class DropProcessingInfo:
+    sample_rate_hz: float
+    dt_s: float
+    start_idx: int
+    end_idx: int
+    duration_s: float
+    freefall_median_g: float | None
+    bias_correction_g: float
+
+
 def load_masses_json(path: Path) -> dict:
-    with path.open('r', encoding='utf-8') as f:
+    with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def build_mass_map(masses: dict, arm_recruitment: float, helmet_mass: float) -> dict:
     """Build mass map using exact body names from OpenSim fullbody model."""
-    b = masses['bodies']
+    b = masses["bodies"]
 
     arm_mass = (
-        b['humerus_R']
-        + b['humerus_L']
-        + b['ulna_R']
-        + b['ulna_L']
-        + b['radius_R']
-        + b['radius_L']
-        + b['hand_R']
-        + b['hand_L']
+        b["humerus_R"]
+        + b["humerus_L"]
+        + b["ulna_R"]
+        + b["ulna_L"]
+        + b["radius_R"]
+        + b["radius_L"]
+        + b["hand_R"]
+        + b["hand_L"]
     ) * arm_recruitment
 
-    head_total = b['head_neck'] + helmet_mass + arm_mass
+    head_total = b["head_neck"] + helmet_mass + arm_mass
 
     return {
-        'pelvis': b['pelvis'],
-        'l5': b['lumbar5'],
-        'l4': b['lumbar4'],
-        'l3': b['lumbar3'],
-        'l2': b['lumbar2'],
-        'l1': b['lumbar1'],
-        't12': b['thoracic12'],
-        't11': b['thoracic11'],
-        't10': b['thoracic10'],
-        't9': b['thoracic9'],
-        't8': b['thoracic8'],
-        't7': b['thoracic7'],
-        't6': b['thoracic6'],
-        't5': b['thoracic5'],
-        't4': b['thoracic4'],
-        't3': b['thoracic3'],
-        't2': b['thoracic2'],
-        't1': b['thoracic1'],
-        'head': head_total,
+        "pelvis": b["pelvis"],
+        "l5": b["lumbar5"],
+        "l4": b["lumbar4"],
+        "l3": b["lumbar3"],
+        "l2": b["lumbar2"],
+        "l1": b["lumbar1"],
+        "t12": b["thoracic12"],
+        "t11": b["thoracic11"],
+        "t10": b["thoracic10"],
+        "t9": b["thoracic9"],
+        "t8": b["thoracic8"],
+        "t7": b["thoracic7"],
+        "t6": b["thoracic6"],
+        "t5": b["thoracic5"],
+        "t4": b["thoracic4"],
+        "t3": b["thoracic3"],
+        "t2": b["thoracic2"],
+        "t1": b["thoracic1"],
+        "head": head_total,
     }
 
 
-def build_spine_model(mass_map: dict) -> SpineModel:
+def _freefall_bias_correct(accel_g: np.ndarray) -> tuple[np.ndarray, float | None, float]:
+    """
+    Ensure the freefall baseline is -1 g as per README convention.
+    We estimate freefall from samples clearly below ~-0.5 g.
+    """
+    mask = accel_g < -0.5
+    if not np.any(mask):
+        return accel_g, None, 0.0
+
+    ff_med = float(np.median(accel_g[mask]))
+    bias = -1.0 - ff_med
+    return accel_g + bias, ff_med, bias
+
+
+def _baseline_zero_correct(accel_g: np.ndarray) -> tuple[np.ndarray, float]:
+    """
+    For Yoganandan pulses: baseline is expected ~0 g inertial before pulse.
+    """
+    # Use first 20 ms worth of samples if possible
+    n = min(len(accel_g), 200)  # assuming ~10 kHz max; still fine
+    base = float(np.median(accel_g[:n]))
+    return accel_g - base, base
+
+
+def build_spine_model(mass_map: dict, nonlinear_cfg: dict | None = None) -> SpineModel:
+    nonlinear_cfg = nonlinear_cfg or {}
+
     node_names = [
-        'pelvis',
-        'L5',
-        'L4',
-        'L3',
-        'L2',
-        'L1',
-        'T12',
-        'T11',
-        'T10',
-        'T9',
-        'T8',
-        'T7',
-        'T6',
-        'T5',
-        'T4',
-        'T3',
-        'T2',
-        'T1',
-        'HEAD',
+        "pelvis",
+        "L5",
+        "L4",
+        "L3",
+        "L2",
+        "L1",
+        "T12",
+        "T11",
+        "T10",
+        "T9",
+        "T8",
+        "T7",
+        "T6",
+        "T5",
+        "T4",
+        "T3",
+        "T2",
+        "T1",
+        "HEAD",
     ]
 
     masses = np.array(
         [
-            mass_map['pelvis'],
-            mass_map['l5'],
-            mass_map['l4'],
-            mass_map['l3'],
-            mass_map['l2'],
-            mass_map['l1'],
-            mass_map['t12'],
-            mass_map['t11'],
-            mass_map['t10'],
-            mass_map['t9'],
-            mass_map['t8'],
-            mass_map['t7'],
-            mass_map['t6'],
-            mass_map['t5'],
-            mass_map['t4'],
-            mass_map['t3'],
-            mass_map['t2'],
-            mass_map['t1'],
-            mass_map['head'],
+            mass_map["pelvis"],
+            mass_map["l5"],
+            mass_map["l4"],
+            mass_map["l3"],
+            mass_map["l2"],
+            mass_map["l1"],
+            mass_map["t12"],
+            mass_map["t11"],
+            mass_map["t10"],
+            mass_map["t9"],
+            mass_map["t8"],
+            mass_map["t7"],
+            mass_map["t6"],
+            mass_map["t5"],
+            mass_map["t4"],
+            mass_map["t3"],
+            mass_map["t2"],
+            mass_map["t1"],
+            mass_map["head"],
         ],
         dtype=float,
     )
 
     # Raj 2019 axial stiffnesses (N/m)
     k = {
-        'head-c1': 0.55e6,
-        'c1-c2': 0.3e6,
-        'c2-c3': 0.7e6,
-        'c3-c4': 0.76e6,
-        'c4-c5': 0.794e6,
-        'c5-c6': 0.967e6,
-        'c6-c7': 1.014e6,
-        'c7-t1': 1.334e6,
-        't1-t2': 0.7e6,
-        't2-t3': 1.2e6,
-        't3-t4': 1.5e6,
-        't4-t5': 2.1e6,
-        't5-t6': 1.9e6,
-        't6-t7': 1.8e6,
-        't7-t8': 1.5e6,
-        't8-t9': 1.5e6,
-        't9-t10': 1.5e6,
-        't10-t11': 1.5e6,
-        't11-t12': 1.5e6,
-        't12-l1': 1.8e6,
-        'l1-l2': 2.13e6,
-        'l2-l3': 2.0e6,
-        'l3-l4': 2.0e6,
-        'l4-l5': 1.87e6,
-        'l5-s1': 1.47e6,
+        "head-c1": 0.55e6,
+        "c1-c2": 0.3e6,
+        "c2-c3": 0.7e6,
+        "c3-c4": 0.76e6,
+        "c4-c5": 0.794e6,
+        "c5-c6": 0.967e6,
+        "c6-c7": 1.014e6,
+        "c7-t1": 1.334e6,
+        "t1-t2": 0.7e6,
+        "t2-t3": 1.2e6,
+        "t3-t4": 1.5e6,
+        "t4-t5": 2.1e6,
+        "t5-t6": 1.9e6,
+        "t6-t7": 1.8e6,
+        "t7-t8": 1.5e6,
+        "t8-t9": 1.5e6,
+        "t9-t10": 1.5e6,
+        "t10-t11": 1.5e6,
+        "t11-t12": 1.5e6,
+        "t12-l1": 1.8e6,
+        "l1-l2": 2.13e6,
+        "l2-l3": 2.0e6,
+        "l3-l4": 2.0e6,
+        "l4-l5": 1.87e6,
+        "l5-s1": 1.47e6,
     }
 
     # Cervical equivalent stiffness (series)
-    cerv_keys = ['head-c1', 'c1-c2', 'c2-c3', 'c3-c4', 'c4-c5', 'c5-c6', 'c6-c7', 'c7-t1']
+    cerv_keys = ["head-c1", "c1-c2", "c2-c3", "c3-c4", "c4-c5", "c5-c6", "c6-c7", "c7-t1"]
     k_cerv_eq = 1.0 / sum(1.0 / k[key] for key in cerv_keys)
 
     # Damping baseline
     c_base = 1200.0
 
     def c_disc(name: str) -> float:
-        # Thoracolumbar boost (T10-L5)
-        if name in ['t10-t11', 't11-t12', 't12-l1', 'l1-l2', 'l2-l3', 'l3-l4', 'l4-l5', 'l5-s1']:
+        # Thoracolumbar boost (T10-L5) from Raj-style note
+        if name in ["t10-t11", "t11-t12", "t12-l1", "l1-l2", "l2-l3", "l3-l4", "l4-l5", "l5-s1"]:
             return 5.0 * c_base
         return c_base
 
-    # Elements (buttocks + discs)
     element_names = [
-        'buttocks',
-        'L5-S1',
-        'L4-L5',
-        'L3-L4',
-        'L2-L3',
-        'L1-L2',
-        'T12-L1',
-        'T11-T12',
-        'T10-T11',
-        'T9-T10',
-        'T8-T9',
-        'T7-T8',
-        'T6-T7',
-        'T5-T6',
-        'T4-T5',
-        'T3-T4',
-        'T2-T3',
-        'T1-T2',
-        'T1-HEAD',
+        "buttocks",
+        "L5-S1",
+        "L4-L5",
+        "L3-L4",
+        "L2-L3",
+        "L1-L2",
+        "T12-L1",
+        "T11-T12",
+        "T10-T11",
+        "T9-T10",
+        "T8-T9",
+        "T7-T8",
+        "T6-T7",
+        "T5-T6",
+        "T4-T5",
+        "T3-T4",
+        "T2-T3",
+        "T1-T2",
+        "T1-HEAD",
     ]
 
-    k_elem = [
-        8.8425e4,  # buttocks
-        k['l5-s1'],
-        k['l4-l5'],
-        k['l3-l4'],
-        k['l2-l3'],
-        k['l1-l2'],
-        k['t12-l1'],
-        k['t11-t12'],
-        k['t10-t11'],
-        k['t9-t10'],
-        k['t8-t9'],
-        k['t7-t8'],
-        k['t6-t7'],
-        k['t5-t6'],
-        k['t4-t5'],
-        k['t3-t4'],
-        k['t2-t3'],
-        k['t1-t2'],
-        k_cerv_eq,
-    ]
+    k_elem = np.array(
+        [
+            8.8425e4,  # buttocks baseline (Raj/Kitazaki lineage)
+            k["l5-s1"],
+            k["l4-l5"],
+            k["l3-l4"],
+            k["l2-l3"],
+            k["l1-l2"],
+            k["t12-l1"],
+            k["t11-t12"],
+            k["t10-t11"],
+            k["t9-t10"],
+            k["t8-t9"],
+            k["t7-t8"],
+            k["t6-t7"],
+            k["t5-t6"],
+            k["t4-t5"],
+            k["t3-t4"],
+            k["t2-t3"],
+            k["t1-t2"],
+            k_cerv_eq,
+        ],
+        dtype=float,
+    )
 
-    c_elem = [
-        1700.0,  # buttocks
-        c_disc('l5-s1'),
-        c_disc('l4-l5'),
-        c_disc('l3-l4'),
-        c_disc('l2-l3'),
-        c_disc('l1-l2'),
-        c_disc('t12-l1'),
-        c_disc('t11-t12'),
-        c_disc('t10-t11'),
-        c_disc('t9-t10'),
-        c_disc('t8-t9'),
-        c_disc('t7-t8'),
-        c_disc('t6-t7'),
-        c_disc('t5-t6'),
-        c_disc('t4-t5'),
-        c_disc('t3-t4'),
-        c_disc('t2-t3'),
-        c_disc('t1-t2'),
-        c_base / len(cerv_keys),
-    ]
+    c_elem = np.array(
+        [
+            1700.0,  # buttocks
+            c_disc("l5-s1"),
+            c_disc("l4-l5"),
+            c_disc("l3-l4"),
+            c_disc("l2-l3"),
+            c_disc("l1-l2"),
+            c_disc("t12-l1"),
+            c_disc("t11-t12"),
+            c_disc("t10-t11"),
+            c_disc("t9-t10"),
+            c_disc("t8-t9"),
+            c_disc("t7-t8"),
+            c_disc("t6-t7"),
+            c_disc("t5-t6"),
+            c_disc("t4-t5"),
+            c_disc("t3-t4"),
+            c_disc("t2-t3"),
+            c_disc("t1-t2"),
+            c_base / len(cerv_keys),
+        ],
+        dtype=float,
+    )
+
+    # --- Nonlinear settings (simple + literature-aligned) ---
+    # Discs: cubic stiffening in compression (Kitazaki/Griffin note of cubic behavior).
+    # Buttocks: nonlinear stiffening in compression (contact area + tissue nonlinearity),
+    # and compression-only contact (no "seat suction"), which fixes the buttocks issue.
+    disc_ref_mm = float(nonlinear_cfg.get("disc_ref_compression_mm", 4.0))
+    disc_kmult = float(nonlinear_cfg.get("disc_k_mult_at_ref", 3.0))
+
+    butt_ref_mm = float(nonlinear_cfg.get("buttocks_ref_compression_mm", 30.0))
+    butt_kmult = float(nonlinear_cfg.get("buttocks_k_mult_at_ref", 3.0))
+    butt_gap_mm = float(nonlinear_cfg.get("buttocks_gap_mm", 0.0))
+
+    compression_ref_m = np.zeros_like(k_elem, dtype=float)
+    compression_k_mult = np.ones_like(k_elem, dtype=float)
+    tension_k_mult = np.ones_like(k_elem, dtype=float)
+
+    compression_only = np.zeros_like(k_elem, dtype=bool)
+    damping_compression_only = np.zeros_like(k_elem, dtype=bool)
+    gap_m = np.zeros_like(k_elem, dtype=float)
+
+    # Buttocks element (index 0)
+    compression_ref_m[0] = butt_ref_mm / 1000.0
+    compression_k_mult[0] = butt_kmult
+    compression_only[0] = True
+    damping_compression_only[0] = True
+    gap_m[0] = butt_gap_mm / 1000.0
+
+    # Spine elements (index 1..)
+    compression_ref_m[1:] = disc_ref_mm / 1000.0
+    compression_k_mult[1:] = disc_kmult
+    tension_k_mult[1:] = 1.0  # keep tension linear for now
 
     return SpineModel(
         node_names=node_names,
         masses_kg=masses,
         element_names=element_names,
-        k_elem=np.array(k_elem, dtype=float),
-        c_elem=np.array(c_elem, dtype=float),
+        k_elem=k_elem,
+        c_elem=c_elem,
+        compression_ref_m=compression_ref_m,
+        compression_k_mult=compression_k_mult,
+        tension_k_mult=tension_k_mult,
+        compression_only=compression_only,
+        damping_compression_only=damping_compression_only,
+        gap_m=gap_m,
     )
 
 
@@ -254,27 +337,27 @@ def load_yog_cases(cases_config: list[dict]) -> list[YogCase]:
     cases = []
     for c in cases_config:
         accel_series = parse_csv_series(
-            YOGANANDAN_DIR / c['accel_csv'],
-            time_candidates=['time', 'time0', 't'],
-            value_candidates=['accel', 'acceleration'],
+            YOGANANDAN_DIR / c["accel_csv"],
+            time_candidates=["time", "time0", "t"],
+            value_candidates=["accel", "acceleration"],
         )
         force_series = parse_csv_series(
-            YOGANANDAN_DIR / c['force_csv'],
-            time_candidates=['time', 'time0', 't'],
-            value_candidates=['force', 'spinal', 'load'],
+            YOGANANDAN_DIR / c["force_csv"],
+            time_candidates=["time", "time0", "t"],
+            value_candidates=["force", "spinal", "load"],
         )
 
         accel_series, _ = resample_to_uniform(accel_series)
         force_series, _ = resample_to_uniform(force_series)
 
         accel_g = np.asarray(accel_series.values, dtype=float)
-        force_n = (
-            np.asarray(force_series.values, dtype=float) * 1000.0 * YOGANANDAN_FORCE_SIGN
-        )  # kN -> N
+        accel_g, _baseline = _baseline_zero_correct(accel_g)
+
+        force_n = np.asarray(force_series.values, dtype=float) * 1000.0 * YOGANANDAN_FORCE_SIGN
 
         cases.append(
             YogCase(
-                name=c['name'],
+                name=c["name"],
                 time_s=np.asarray(accel_series.time_s, dtype=float),
                 accel_g=accel_g,
                 force_time_s=np.asarray(force_series.time_s, dtype=float),
@@ -284,30 +367,66 @@ def load_yog_cases(cases_config: list[dict]) -> list[YogCase]:
     return cases
 
 
-def process_drop_csv(
-    path: Path, cfc: float, peak_g: float, freefall_g: float
-) -> tuple[np.ndarray, np.ndarray]:
+def process_drop_csv_fixed_duration(
+    path: Path,
+    *,
+    cfc: float,
+    peak_g: float,
+    freefall_g: float,
+    duration_ms: float,
+) -> tuple[np.ndarray, np.ndarray, DropProcessingInfo]:
     series = parse_csv_series(
         path,
-        time_candidates=['time', 'time0', 't'],
-        value_candidates=['accel', 'acceleration'],
+        time_candidates=["time", "time0", "t"],
+        value_candidates=["accel", "acceleration"],
     )
     series, sample_rate = resample_to_uniform(series)
+    dt = 1.0 / sample_rate
 
     accel_raw = series.values
-    accel_filtered = cfc_filter(accel_raw, sample_rate, cfc)
-    accel = np.asarray(accel_filtered, dtype=float)
+    accel_filtered = np.asarray(cfc_filter(accel_raw, sample_rate, cfc), dtype=float)
 
+    # Find contact start (as before), but we will simulate for fixed duration after that
     hit = find_first_hit_range(
-        accel.tolist(), peak_threshold_g=peak_g, free_fall_threshold_g=freefall_g
+        accel_filtered.tolist(),
+        peak_threshold_g=peak_g,
+        free_fall_threshold_g=freefall_g,
     )
-    if not hit:
-        return np.asarray(series.time_s), accel
 
-    t = np.asarray(series.time_s)
-    start = hit.start_idx
-    end = hit.end_idx
-    return t[start : end + 1] - t[start], accel[start : end + 1]
+    t_all = np.asarray(series.time_s, dtype=float)
+    if not hit:
+        # No hit detected: take first 200 ms anyway
+        start_idx = 0
+        end_idx = min(len(t_all) - 1, int(round((duration_ms / 1000.0) / dt)))
+    else:
+        start_idx = hit.start_idx
+        end_idx = min(len(t_all) - 1, start_idx + int(round((duration_ms / 1000.0) / dt)))
+
+    t_seg = t_all[start_idx : end_idx + 1] - t_all[start_idx]
+    a_seg = accel_filtered[start_idx : end_idx + 1]
+
+    # Freefall bias correction so that median freefall is -1 g
+    a_seg, ff_med, bias = _freefall_bias_correct(a_seg)
+
+    # Pad to exact duration if needed
+    desired_n = int(round((duration_ms / 1000.0) / dt)) + 1
+    if len(t_seg) < desired_n:
+        pad_n = desired_n - len(t_seg)
+        t_pad = t_seg[-1] + dt * (np.arange(pad_n) + 1)
+        a_pad = -1.0 * np.ones(pad_n, dtype=float)  # freefall
+        t_seg = np.concatenate([t_seg, t_pad])
+        a_seg = np.concatenate([a_seg, a_pad])
+
+    info = DropProcessingInfo(
+        sample_rate_hz=float(sample_rate),
+        dt_s=float(dt),
+        start_idx=int(start_idx),
+        end_idx=int(end_idx),
+        duration_s=float(t_seg[-1] - t_seg[0]),
+        freefall_median_g=ff_med,
+        bias_correction_g=float(bias),
+    )
+    return t_seg, a_seg, info
 
 
 def write_timeseries_csv(
@@ -317,63 +436,67 @@ def write_timeseries_csv(
     node_names: list[str],
     elem_names: list[str],
     y: np.ndarray,
+    v: np.ndarray,
+    a: np.ndarray,
     forces_n: np.ndarray,
 ) -> None:
     import csv
 
-    headers = ['time_s', 'base_accel_g']
-    headers += [f'y_{n}_mm' for n in node_names]
-    headers += [f'F_{e}_kN' for e in elem_names]
+    headers = ["time_s", "base_accel_g"]
+    headers += [f"y_{n}_mm" for n in node_names]
+    headers += [f"v_{n}_mps" for n in node_names]
+    headers += [f"a_{n}_mps2" for n in node_names]
+    headers += [f"F_{e}_kN" for e in elem_names]
 
-    with out_path.open('w', newline='', encoding='utf-8') as f:
+    with out_path.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(headers)
         for i in range(time_s.size):
             row = [
-                f'{time_s[i]:.6f}',
-                f'{base_accel_g[i]:.6f}',
+                f"{time_s[i]:.6f}",
+                f"{base_accel_g[i]:.6f}",
             ]
-            row += [f'{(y[i, j] * 1000.0):.6f}' for j in range(y.shape[1])]
-            row += [f'{(forces_n[i, j] / 1000.0):.6f}' for j in range(forces_n.shape[1])]
+            row += [f"{(y[i, j] * 1000.0):.6f}" for j in range(y.shape[1])]
+            row += [f"{v[i, j]:.6f}" for j in range(v.shape[1])]
+            row += [f"{a[i, j]:.6f}" for j in range(a.shape[1])]
+            row += [f"{(forces_n[i, j] / 1000.0):.6f}" for j in range(forces_n.shape[1])]
             w.writerow(row)
 
 
 def main() -> None:
-    config_path = Path(__file__).parent / 'config.json'
-    config = json.loads(config_path.read_text(encoding='utf-8'))
+    config_path = Path(__file__).parent / "config.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
 
-    # Load masses and heights from OpenSim model data
     masses_data = load_masses_json(MASSES_JSON_PATH)
-    arm_recruitment = float(config['model'].get('arm_recruitment', 0.5))
-    helmet_mass = float(config['model'].get('helmet_mass_kg', 0.7))
+    arm_recruitment = float(config["model"].get("arm_recruitment", 0.5))
+    helmet_mass = float(config["model"].get("helmet_mass_kg", 0.7))
     mass_map = build_mass_map(masses_data, arm_recruitment=arm_recruitment, helmet_mass=helmet_mass)
 
-    # Get heights from OpenSim if available
-    heights_from_model = masses_data.get('heights_relative_to_pelvis_mm', None)
+    heights_from_model = masses_data.get("heights_relative_to_pelvis_mm", None)
 
-    model = build_spine_model(mass_map)
+    nonlinear_cfg = config.get("nonlinear", {})
+    model = build_spine_model(mass_map, nonlinear_cfg=nonlinear_cfg)
 
-    # T12-L1 element index
-    t12_elem_idx = model.element_names.index('T12-L1')
+    t12_elem_idx = model.element_names.index("T12-L1")
+    butt_elem_idx = model.element_names.index("buttocks")
 
-    out_dir = Path(config['output_dir'])
+    out_dir = Path(config["output_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Calibration
-    calib_cfg = config.get('yoganandan')
+    calib_cfg = config.get("yoganandan")
     if calib_cfg:
-        cases = load_yog_cases(calib_cfg['cases'])
+        cases = load_yog_cases(calib_cfg["cases"])
         calib = calibrate_to_yoganandan(model, cases, t12_elem_idx)
 
-        calib_out = out_dir / 'calibration_result.json'
-        calib_out.write_text(
+        (out_dir / "calibration_result.json").write_text(
             json.dumps(
                 {
-                    'scales': calib.scales,
-                    'success': calib.success,
-                    'cost': calib.cost,
-                    'residual_norm': calib.residual_norm,
-                    'note': 'If s_k_spine < 1, model is softer than baseline - causes excessive compression',
+                    "scales": calib.scales,
+                    "success": calib.success,
+                    "cost": calib.cost,
+                    "residual_norm": calib.residual_norm,
+                    "note": "Nonlinear model: scalars still apply to baseline k/c.",
                 },
                 indent=2,
             )
@@ -381,63 +504,84 @@ def main() -> None:
 
         model = apply_calibration(model, calib.scales)
 
-        print(f'Calibration complete:')
+        print("Calibration complete:")
         print(f'  s_k_spine = {calib.scales["s_k_spine"]:.3f}')
         print(f'  s_c_spine = {calib.scales["s_c_spine"]:.3f}')
         print(f'  s_k_butt  = {calib.scales["s_k_butt"]:.3f}')
         print(f'  s_c_butt  = {calib.scales["s_c_butt"]:.3f}')
+        print("  Nonlinear refs:")
+        print(f'    disc_ref_compression_mm = {nonlinear_cfg.get("disc_ref_compression_mm", 4.0)}')
+        print(f'    disc_k_mult_at_ref      = {nonlinear_cfg.get("disc_k_mult_at_ref", 3.0)}')
+        print(f'    butt_ref_compression_mm = {nonlinear_cfg.get("buttocks_ref_compression_mm", 30.0)}')
+        print(f'    butt_k_mult_at_ref      = {nonlinear_cfg.get("buttocks_k_mult_at_ref", 3.0)}')
+        print(f'    butt_gap_mm             = {nonlinear_cfg.get("buttocks_gap_mm", 0.0)}')
 
-    # Drop simulations
     drop_files = sorted(DROPS_DIR.glob(DROPS_PATTERN))
     summary = []
 
     for fpath in drop_files:
-        print(f'Processing {fpath.name}...')
-        t, a_base_g = process_drop_csv(
-            fpath, cfc=CFC, peak_g=PEAK_THRESHOLD_G, freefall_g=FREE_FALL_THRESHOLD_G
+        print(f"Processing {fpath.name}...")
+
+        t, a_base_g, info = process_drop_csv_fixed_duration(
+            fpath,
+            cfc=CFC,
+            peak_g=PEAK_THRESHOLD_G,
+            freefall_g=FREE_FALL_THRESHOLD_G,
+            duration_ms=DROP_SIM_DURATION_MS,
         )
 
-        # Initial state in freefall baseline
         y0 = np.zeros(model.size(), dtype=float)
         v0 = np.zeros(model.size(), dtype=float)
 
-        sim = newmark_linear(model, t, a_base_g, y0, v0)
+        sim = newmark_nonlinear(model, t, a_base_g, y0, v0)
         forces = sim.element_forces_n
         f_t12 = forces[:, t12_elem_idx]
+        f_butt = forces[:, butt_elem_idx]
 
-        # Compute compression metrics
-        head_idx = model.node_names.index('HEAD')
-        pelvis_idx = model.node_names.index('pelvis')
-        max_head_compression_mm = -np.min(sim.y[:, head_idx]) * 1000.0
-        max_pelvis_compression_mm = -np.min(sim.y[:, pelvis_idx]) * 1000.0
+        head_idx = model.node_names.index("HEAD")
+        pelvis_idx = model.node_names.index("pelvis")
+
+        max_head_compression_mm = -float(np.min(sim.y[:, head_idx]) * 1000.0)
+        max_pelvis_compression_mm = -float(np.min(sim.y[:, pelvis_idx]) * 1000.0)
         max_spine_shortening_mm = max_head_compression_mm - max_pelvis_compression_mm
+
+        # Additional diagnostics
+        peak_base_g = float(np.max(a_base_g))
+        min_base_g = float(np.min(a_base_g))
+        peak_t12_kN = float(np.max(f_t12) / 1000.0)
+        peak_butt_kN = float(np.max(f_butt) / 1000.0)
 
         run_dir = out_dir / fpath.stem
         if run_dir.exists():
             shutil.rmtree(run_dir)
         run_dir.mkdir(parents=True)
 
-        # CSV
         write_timeseries_csv(
-            run_dir / 'timeseries.csv',
+            run_dir / "timeseries.csv",
             sim.time_s,
             sim.base_accel_g,
             model.node_names,
             model.element_names,
             sim.y,
+            sim.v,
+            sim.a,
             forces,
         )
 
-        # Charts with OpenSim heights
         plot_displacements(
             sim.time_s,
             sim.y,
             model.node_names,
-            run_dir / 'displacements.png',
+            run_dir / "displacements.png",
             heights_from_model=heights_from_model,
+            reference_frame="pelvis",
         )
         plot_forces(
-            sim.time_s, forces, model.element_names, run_dir / 'forces.png', highlight='T12-L1'
+            sim.time_s,
+            forces,
+            model.element_names,
+            run_dir / "forces.png",
+            highlight="T12-L1",
         )
         plot_displacement_colored_by_force(
             sim.time_s,
@@ -445,28 +589,74 @@ def main() -> None:
             forces,
             model.node_names,
             model.element_names,
-            run_dir / 'mixed.png',
+            run_dir / "mixed.png",
             heights_from_model=heights_from_model,
+            reference_frame="pelvis",
         )
+
+        # Element compression metrics (max compression in mm)
+        elem_max_comp_mm: dict[str, float] = {}
+        for e_idx, ename in enumerate(model.element_names):
+            if e_idx == 0:
+                comp = np.maximum(-(sim.y[:, 0] + model.gap_m[0]), 0.0)
+            else:
+                lower = e_idx - 1
+                upper = e_idx
+                comp = np.maximum(-(sim.y[:, upper] - sim.y[:, lower] + model.gap_m[e_idx]), 0.0)
+            elem_max_comp_mm[ename] = float(np.max(comp) * 1000.0)
+
+        print("  Input/base:")
+        print(f"    sample_rate: {info.sample_rate_hz:.1f} Hz, dt: {info.dt_s*1000.0:.3f} ms")
+        print(f"    sim duration: {DROP_SIM_DURATION_MS:.0f} ms (forced)")
+        print(f"    base accel peak: {peak_base_g:.2f} g, min: {min_base_g:.2f} g")
+        if info.freefall_median_g is not None:
+            print(f"    freefall median: {info.freefall_median_g:.3f} g, bias correction: {info.bias_correction_g:+.4f} g")
+
+        print("  Forces:")
+        print(f"    Peak buttocks: {peak_butt_kN:.2f} kN")
+        print(f"    Peak T12-L1:   {peak_t12_kN:.2f} kN @ {float(sim.time_s[np.argmax(f_t12)]*1000.0):.1f} ms")
+
+        print("  Displacements:")
+        print(f"    Head compression:  {max_head_compression_mm:.1f} mm")
+        print(f"    Pelvis compression:{max_pelvis_compression_mm:.1f} mm")
+        print(f"    Spine shortening:  {max_spine_shortening_mm:.1f} mm")
+
+        # Print top contributors by compression
+        top_comp = sorted(elem_max_comp_mm.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        print("  Max element compressions (top 5):")
+        for name, mm in top_comp:
+            print(f"    {name:>8s}: {mm:7.2f} mm")
 
         summary.append(
             {
-                'file': fpath.name,
-                'peak_T12_L1_kN': float(np.max(f_t12) / 1000.0),
-                'time_to_peak_ms': float(sim.time_s[np.argmax(f_t12)] * 1000.0),
-                'max_head_compression_mm': float(max_head_compression_mm),
-                'max_pelvis_compression_mm': float(max_pelvis_compression_mm),
-                'max_spine_shortening_mm': float(max_spine_shortening_mm),
+                "file": fpath.name,
+                "processing": {
+                    "sample_rate_hz": info.sample_rate_hz,
+                    "dt_s": info.dt_s,
+                    "start_idx": info.start_idx,
+                    "end_idx": info.end_idx,
+                    "freefall_median_g": info.freefall_median_g,
+                    "bias_correction_g": info.bias_correction_g,
+                    "sim_duration_ms": DROP_SIM_DURATION_MS,
+                },
+                "base_accel": {
+                    "peak_g": peak_base_g,
+                    "min_g": min_base_g,
+                },
+                "peak_forces_kN": {
+                    "buttocks": peak_butt_kN,
+                    "T12-L1": peak_t12_kN,
+                },
+                "time_to_peak_ms": float(sim.time_s[np.argmax(f_t12)] * 1000.0),
+                "max_head_compression_mm": max_head_compression_mm,
+                "max_pelvis_compression_mm": max_pelvis_compression_mm,
+                "max_spine_shortening_mm": max_spine_shortening_mm,
+                "max_element_compression_mm": elem_max_comp_mm,
             }
         )
 
-        print(f'  Peak T12-L1: {summary[-1]["peak_T12_L1_kN"]:.2f} kN')
-        print(f'  Head compression: {max_head_compression_mm:.1f} mm')
-        print(f'  Spine shortening: {max_spine_shortening_mm:.1f} mm')
-
-    summary_path = out_dir / 'summary.json'
-    summary_path.write_text(json.dumps(summary, indent=2))
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

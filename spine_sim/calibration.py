@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.optimize import least_squares
 
-from .model import SimulationResult, SpineModel, initial_state_static, newmark_linear
+from .model import SpineModel, initial_state_static, newmark_nonlinear
 
 
 @dataclass
@@ -50,6 +49,12 @@ def _apply_scales(
         element_names=base_model.element_names,
         k_elem=k,
         c_elem=c,
+        compression_ref_m=base_model.compression_ref_m,
+        compression_k_mult=base_model.compression_k_mult,
+        tension_k_mult=base_model.tension_k_mult,
+        compression_only=base_model.compression_only,
+        damping_compression_only=base_model.damping_compression_only,
+        gap_m=base_model.gap_m,
     )
 
 
@@ -61,19 +66,19 @@ def calibrate_to_yoganandan(
 ) -> CalibResult:
     if init_scales is None:
         init_scales = {
-            's_k_spine': 1.0,
-            's_c_spine': 1.0,
-            's_k_butt': 1.0,
-            's_c_butt': 1.0,
+            "s_k_spine": 1.0,
+            "s_c_spine": 1.0,
+            "s_k_butt": 1.0,
+            "s_c_butt": 1.0,
         }
 
     x0 = np.log(
         np.array(
             [
-                init_scales['s_k_spine'],
-                init_scales['s_c_spine'],
-                init_scales['s_k_butt'],
-                init_scales['s_c_butt'],
+                init_scales["s_k_spine"],
+                init_scales["s_c_spine"],
+                init_scales["s_k_butt"],
+                init_scales["s_c_butt"],
             ],
             dtype=float,
         )
@@ -87,16 +92,14 @@ def calibrate_to_yoganandan(
 
         res_all = []
         for case in cases:
-            # Gravity-settled initial state
             y0, v0 = initial_state_static(model, base_accel_g0=0.0)
-            sim = newmark_linear(model, case.time_s, case.accel_g, y0, v0)
+            sim = newmark_nonlinear(model, case.time_s, case.accel_g, y0, v0)
 
             pred_force = sim.element_forces_n[:, t12_element_index]
             pred_force_interp = np.interp(case.force_time_s, sim.time_s, pred_force)
-            scale = max(np.max(case.force_n), 1.0)
 
-            res = (pred_force_interp - case.force_n) / scale
-            res_all.append(res)
+            scale = max(float(np.max(case.force_n)), 1.0)
+            res_all.append((pred_force_interp - case.force_n) / scale)
 
         return np.concatenate(res_all)
 
@@ -104,10 +107,10 @@ def calibrate_to_yoganandan(
 
     s = np.exp(result.x)
     scales = {
-        's_k_spine': float(s[0]),
-        's_c_spine': float(s[1]),
-        's_k_butt': float(s[2]),
-        's_c_butt': float(s[3]),
+        "s_k_spine": float(s[0]),
+        "s_c_spine": float(s[1]),
+        "s_k_butt": float(s[2]),
+        "s_c_butt": float(s[3]),
     }
 
     return CalibResult(
@@ -121,8 +124,8 @@ def calibrate_to_yoganandan(
 def apply_calibration(base_model: SpineModel, scales: dict) -> SpineModel:
     return _apply_scales(
         base_model,
-        scales['s_k_spine'],
-        scales['s_c_spine'],
-        scales['s_k_butt'],
-        scales['s_c_butt'],
+        scales["s_k_spine"],
+        scales["s_c_spine"],
+        scales["s_k_butt"],
+        scales["s_c_butt"],
     )
