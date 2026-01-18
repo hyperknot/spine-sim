@@ -20,9 +20,6 @@ def load_toen_drop_calibration() -> tuple[dict | None, Path]:
 
 def write_toen_drop_calibration(result: dict, *, active: bool = True) -> Path:
     TOEN_DROP_FILE.parent.mkdir(parents=True, exist_ok=True)
-    doc = {
-        "active": bool(active),
-        "result": result,
-    }
+    doc = {"active": bool(active), "result": result}
     TOEN_DROP_FILE.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
     return TOEN_DROP_FILE

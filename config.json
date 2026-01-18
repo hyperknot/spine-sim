@@ -5,60 +5,68 @@
     "arm_recruitment": 0.5,
     "helmet_mass_kg": 0.7
   },
-  "buttocks_only": {
-    "k_n_per_m": 180500.0,
-    "c_ns_per_m": 3130.0,
-    "ref_compression_mm": 40.0,
-    "k_mult_at_ref": 1.0,
-    "compression_limit_mm": 45.0,
-    "compression_stop_k_n_per_m": 2000000.0,
-    "compression_stop_smoothing_mm": 5.0,
-    "gap_mm": 0.0,
-    "poly_k2_n_per_m2": 0.0,
-    "poly_k3_n_per_m3": 0.0
+
+  "drop": {
+    "inputs_dir": "drops",
+    "pattern": "*.csv",
+    "output_dir": "output/drop",
+
+    "cfc": 75,
+    "peak_threshold_g": 5.0,
+    "freefall_threshold_g": -0.85,
+    "style_duration_threshold_ms": 300.0,
+
+    "sim_duration_ms": 200.0,
+    "gravity_settle_ms": 150.0,
+    "drop_baseline_correction": true,
+
+    "calibration_mode": "peaks"
   },
+
+  "buttock": {
+    "output_dir": "output/toen_drop",
+
+    "subject": "avg",
+    "target_set": "avg",
+    "male50_mass_kg": 75.4,
+
+    "velocities_mps": [3.5, 8.0],
+    "use_saved_calibration": true,
+
+    "solver": {
+      "dt_s": 0.0005,
+      "duration_s": 0.15,
+      "max_newton_iter": 10
+    },
+
+    "densification": {
+      "buttocks": {
+        "limit_mm": 39.0,
+        "stop_k_n_per_m": 5000000.0,
+        "smoothing_mm": 1.0
+      }
+    }
+  },
+
   "maxwell": {
     "disc_ref_compression_mm": 2.0,
     "disc_k_mult_at_ref": 8.0,
     "buttocks_ref_compression_mm": 25.0,
     "buttocks_k_mult_at_ref": 20.0,
     "buttocks_gap_mm": 0.0,
-    "maxwell_k_ratios": [
-      1.0,
-      0.5
-    ],
-    "maxwell_tau_ms": [
-      10.0,
-      120.0
-    ],
+    "maxwell_k_ratios": [1.0, 0.5],
+    "maxwell_tau_ms": [10.0, 120.0],
     "c_base_ns_per_m": 1200.0
   },
+
   "zwt": {
     "disc_poly_k2_n_per_m2": 0.0,
     "disc_poly_k3_n_per_m3": 0.0,
     "buttocks_poly_k2_n_per_m2": 0.0,
     "buttocks_poly_k3_n_per_m3": 0.0,
     "buttocks_gap_mm": 0.0,
-    "maxwell_k_ratios": [
-      1.0,
-      0.5
-    ],
-    "maxwell_tau_ms": [
-      10.0,
-      120.0
-    ],
+    "maxwell_k_ratios": [1.0, 0.5],
+    "maxwell_tau_ms": [10.0, 120.0],
     "c_base_ns_per_m": 1200.0
-  },
-  "calibration": {
-    "mode": "peaks"
-  },
-  "drop_baseline_correction": true,
-  "gravity_settle_ms": 150.0,
-  "output_dir": "output",
-  "plotting": {
-    "buttocks_height_mm": 500.0,
-    "show_element_thickness": false,
-    "stack_elements": true,
-    "buttocks_clamp_to_height": true
   }
 }
