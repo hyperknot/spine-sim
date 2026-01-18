@@ -42,6 +42,7 @@ class SpineModel:
     # Optional compression limit / stop stiffness (bottom-out)
     compression_limit_m: np.ndarray | None = None  # shape (N_elem,)
     compression_stop_k: np.ndarray | None = None  # shape (N_elem,)
+    compression_stop_smoothing_m: np.ndarray | None = None  # shape (N_elem,)
 
     def size(self) -> int:
         return len(self.node_names)
@@ -177,10 +178,13 @@ def _element_force_upper_and_partials(
 
     limit_m = None
     stop_k = 0.0
+    smooth_m = 0.0
     if model.compression_limit_m is not None:
         limit_m = float(model.compression_limit_m[e_idx])
     if model.compression_stop_k is not None:
         stop_k = float(model.compression_stop_k[e_idx])
+    if model.compression_stop_smoothing_m is not None:
+        smooth_m = float(model.compression_stop_smoothing_m[e_idx])
 
     B = model.n_maxwell()
     s_new = np.zeros(B, dtype=float)
@@ -208,10 +212,24 @@ def _element_force_upper_and_partials(
         f_s = k_lin * x + k2 * x * x + k3 * x * x * x
         dF_dx = k_lin + 2.0 * k2 * x + 3.0 * k3 * x * x
 
-        if limit_m is not None and limit_m > 0.0 and stop_k > 0.0 and x > limit_m:
-            x_excess = x - limit_m
-            f_s += stop_k * x_excess
-            dF_dx += stop_k
+        if limit_m is not None and limit_m > 0.0 and stop_k > 0.0:
+            if smooth_m <= 0.0:
+                smooth_m = 1e-6
+
+            z = (x - limit_m) / smooth_m
+            if z > 50.0:
+                softplus = z
+                sigmoid = 1.0
+            elif z < -50.0:
+                softplus = np.exp(z)
+                sigmoid = 0.0
+            else:
+                softplus = np.log1p(np.exp(z))
+                sigmoid = 1.0 / (1.0 + np.exp(-z))
+
+            smooth_excess = smooth_m * softplus
+            f_s += stop_k * smooth_excess
+            dF_dx += stop_k * sigmoid
 
         f_d = (-c_lin * rel_v_mps) if use_damp else 0.0
         f_mx = float(np.sum(s_new))

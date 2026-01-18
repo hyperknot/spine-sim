@@ -117,10 +117,14 @@ def _format_buttocks_model_debug(model, *, buttocks_height_mm: float, buttocks_c
     if model.compression_limit_m is not None and model.compression_limit_m.size:
         limit_mm = float(model.compression_limit_m[e0] * 1000.0)
         stop_k = 0.0
+        smooth_mm = 0.0
         if model.compression_stop_k is not None and model.compression_stop_k.size:
             stop_k = float(model.compression_stop_k[e0])
+        if model.compression_stop_smoothing_m is not None and model.compression_stop_smoothing_m.size:
+            smooth_mm = float(model.compression_stop_smoothing_m[e0] * 1000.0)
         lines.append(f"  compression_limit = {limit_mm:.3f} mm")
         lines.append(f"  compression_stop_k = {stop_k:.6g} N/m")
+        lines.append(f"  compression_stop_smoothing = {smooth_mm:.3f} mm")
 
     if model.maxwell_k.size:
         mx = model.maxwell_k[e0, :]
@@ -303,6 +307,7 @@ def _get_buttocks_only_config(config: dict) -> dict:
         "k_mult_at_ref": float(butt_cfg.get("k_mult_at_ref", 1.0)),
         "compression_limit_mm": float(butt_cfg.get("compression_limit_mm", 0.0)),
         "compression_stop_k_n_per_m": float(butt_cfg.get("compression_stop_k_n_per_m", 0.0)),
+        "compression_stop_smoothing_mm": float(butt_cfg.get("compression_stop_smoothing_mm", 5.0)),
         "gap_mm": float(butt_cfg.get("gap_mm", 0.0)),
         "poly_k2_n_per_m2": float(butt_cfg.get("poly_k2_n_per_m2", 0.0)),
         "poly_k3_n_per_m3": float(butt_cfg.get("poly_k3_n_per_m3", 0.0)),
@@ -332,9 +337,11 @@ def _build_buttocks_only_model(torso_mass_kg: float, cfg: dict) -> SpineModel:
 
     compression_limit_m = None
     compression_stop_k = None
+    compression_stop_smoothing_m = None
     if cfg["compression_limit_mm"] > 0.0 and cfg["compression_stop_k_n_per_m"] > 0.0:
         compression_limit_m = np.array([cfg["compression_limit_mm"] / 1000.0], dtype=float)
         compression_stop_k = np.array([cfg["compression_stop_k_n_per_m"]], dtype=float)
+        compression_stop_smoothing_m = np.array([cfg["compression_stop_smoothing_mm"] / 1000.0], dtype=float)
 
     maxwell_k = np.zeros((1, 0), dtype=float)
     maxwell_tau_s = np.zeros((1, 0), dtype=float)
@@ -359,6 +366,7 @@ def _build_buttocks_only_model(torso_mass_kg: float, cfg: dict) -> SpineModel:
         poly_k3=poly_k3,
         compression_limit_m=compression_limit_m,
         compression_stop_k=compression_stop_k,
+        compression_stop_smoothing_m=compression_stop_smoothing_m,
     )
 
 
@@ -1169,6 +1177,7 @@ def _run_buttocks_only(config_path: Path) -> None:
                 "buttocks_c_ns_per_m": butt_cfg["c_ns_per_m"],
                 "compression_limit_mm": butt_cfg["compression_limit_mm"],
                 "compression_stop_k_n_per_m": butt_cfg["compression_stop_k_n_per_m"],
+                "compression_stop_smoothing_mm": butt_cfg["compression_stop_smoothing_mm"],
             }
         )
 

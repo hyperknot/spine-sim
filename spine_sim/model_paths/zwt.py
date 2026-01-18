@@ -175,6 +175,7 @@ def _apply_scales(
         poly_k3=poly_k3,
         compression_limit_m=base_model.compression_limit_m,
         compression_stop_k=base_model.compression_stop_k,
+        compression_stop_smoothing_m=base_model.compression_stop_smoothing_m,
     )
 
 
