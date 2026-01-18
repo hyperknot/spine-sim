@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.collections import LineCollection
 
 
@@ -17,25 +17,25 @@ def _build_height_map(
     buttocks_height_mm: float = DEFAULT_BUTTOCKS_HEIGHT_MM,
 ) -> np.ndarray:
     name_map = {
-        "pelvis": "pelvis",
-        "L5": "lumbar5",
-        "L4": "lumbar4",
-        "L3": "lumbar3",
-        "L2": "lumbar2",
-        "L1": "lumbar1",
-        "T12": "thoracic12",
-        "T11": "thoracic11",
-        "T10": "thoracic10",
-        "T9": "thoracic9",
-        "T8": "thoracic8",
-        "T7": "thoracic7",
-        "T6": "thoracic6",
-        "T5": "thoracic5",
-        "T4": "thoracic4",
-        "T3": "thoracic3",
-        "T2": "thoracic2",
-        "T1": "thoracic1",
-        "HEAD": "head_neck",
+        'pelvis': 'pelvis',
+        'L5': 'lumbar5',
+        'L4': 'lumbar4',
+        'L3': 'lumbar3',
+        'L2': 'lumbar2',
+        'L1': 'lumbar1',
+        'T12': 'thoracic12',
+        'T11': 'thoracic11',
+        'T10': 'thoracic10',
+        'T9': 'thoracic9',
+        'T8': 'thoracic8',
+        'T7': 'thoracic7',
+        'T6': 'thoracic6',
+        'T5': 'thoracic5',
+        'T4': 'thoracic4',
+        'T3': 'thoracic3',
+        'T2': 'thoracic2',
+        'T1': 'thoracic1',
+        'HEAD': 'head_neck',
     }
 
     heights = []
@@ -43,7 +43,7 @@ def _build_height_map(
         if heights_from_model is None:
             heights.append(buttocks_height_mm + len(heights) * 35.0)
         else:
-            opensim_name = name_map.get(node.upper(), name_map.get(node, None))
+            opensim_name = name_map.get(node.upper(), name_map.get(node))
             if opensim_name and opensim_name in heights_from_model:
                 rel_height = heights_from_model[opensim_name]
                 heights.append(buttocks_height_mm + rel_height)
@@ -125,17 +125,31 @@ def _apply_reference_frame_to_elements(
     rest_lengths_mm: np.ndarray,
     reference_frame: str,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, str, float, str]:
-    if reference_frame == "pelvis":
-        pelvis_idx = node_names.index("pelvis")
+    if reference_frame == 'pelvis':
+        pelvis_idx = node_names.index('pelvis')
         node_heights_mm = _build_node_heights_from_rest(rest_lengths_mm)
         pelvis_pos = node_heights_mm[pelvis_idx] + y_mm[:, pelvis_idx]
 
         centers_mm = centers_mm - pelvis_pos[:, None]
         lower_mm = lower_mm - pelvis_pos[:, None]
         upper_mm = upper_mm - pelvis_pos[:, None]
-        return centers_mm, lower_mm, upper_mm, "Height relative to pelvis (mm)", 0.0, "pelvis reference"
+        return (
+            centers_mm,
+            lower_mm,
+            upper_mm,
+            'Height relative to pelvis (mm)',
+            0.0,
+            'pelvis reference',
+        )
 
-    return centers_mm, lower_mm, upper_mm, "Height above excitor plate (mm)", 0.0, "excitor plate (base)"
+    return (
+        centers_mm,
+        lower_mm,
+        upper_mm,
+        'Height above excitor plate (mm)',
+        0.0,
+        'excitor plate (base)',
+    )
 
 
 def plot_displacements(
@@ -148,7 +162,7 @@ def plot_displacements(
     *,
     heights_from_model: dict[str, float] | None = None,
     buttocks_height_mm: float = DEFAULT_BUTTOCKS_HEIGHT_MM,
-    reference_frame: str = "base",
+    reference_frame: str = 'base',
     show_element_thickness: bool = False,
     stack_elements: bool = True,
     buttocks_clamp_to_height: bool = True,
@@ -165,23 +179,25 @@ def plot_displacements(
         stack_elements=stack_elements,
     )
 
-    centers_mm, lower_mm, upper_mm, ylabel, ref_line, ref_label = _apply_reference_frame_to_elements(
-        centers_mm,
-        lower_mm,
-        upper_mm,
-        node_names,
-        y_mm,
-        rest_lengths_mm,
-        reference_frame,
+    centers_mm, lower_mm, upper_mm, ylabel, ref_line, ref_label = (
+        _apply_reference_frame_to_elements(
+            centers_mm,
+            lower_mm,
+            upper_mm,
+            node_names,
+            y_mm,
+            rest_lengths_mm,
+            reference_frame,
+        )
     )
 
     time_ms = time_s * 1000
 
     fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(14, 10), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
+        2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]}
     )
 
-    ax1.axhline(y=ref_line, color="black", linewidth=2.0, label=ref_label)
+    ax1.axhline(y=ref_line, color='black', linewidth=2.0, label=ref_label)
     n_elems = min(len(elem_names), centers_mm.shape[1])
     colors = plt.cm.viridis(np.linspace(0, 0.9, n_elems))
 
@@ -201,21 +217,21 @@ def plot_displacements(
     ymax = float(np.max(upper_mm[:, :n_elems]))
 
     ax1.set_ylabel(ylabel)
-    ax1.set_title("Compressible Element Centers During Impact")
+    ax1.set_title('Compressible Element Centers During Impact')
     ax1.set_xlim(0, PLOT_DURATION_MS)
     ax1.set_ylim(ymin - 20.0, ymax + 20.0)
     ax1.grid(True, alpha=0.3)
-    ax1.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
+    ax1.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
 
-    ax2.plot(time_ms, accel_g, color="tab:red", linewidth=1.2)
-    ax2.axhline(y=0, color="gray", linewidth=0.8, linestyle="--")
-    ax2.set_xlabel("Time (ms)")
-    ax2.set_ylabel("Base Accel (g)")
+    ax2.plot(time_ms, accel_g, color='tab:red', linewidth=1.2)
+    ax2.axhline(y=0, color='gray', linewidth=0.8, linestyle='--')
+    ax2.set_xlabel('Time (ms)')
+    ax2.set_ylabel('Base Accel (g)')
     ax2.set_xlim(0, PLOT_DURATION_MS)
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(out_path, dpi=160, bbox_inches="tight")
+    plt.savefig(out_path, dpi=160, bbox_inches='tight')
     plt.close()
 
 
@@ -231,23 +247,23 @@ def plot_forces(
     time_ms = time_s * 1000
 
     fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(12, 9), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
+        2, 1, figsize=(12, 9), sharex=True, gridspec_kw={'height_ratios': [3, 1]}
     )
 
     for i, name in enumerate(elem_names):
         lw = 2.0 if name == highlight else 1.0
         ax1.plot(time_ms, forces_n[:, i] / 1000.0, label=name, linewidth=lw)
 
-    ax1.set_ylabel("Force (kN)")
-    ax1.set_title("Junction Forces vs Time (Compression Positive)")
+    ax1.set_ylabel('Force (kN)')
+    ax1.set_title('Junction Forces vs Time (Compression Positive)')
     ax1.set_xlim(0, PLOT_DURATION_MS)
     ax1.grid(True, alpha=0.3)
     ax1.legend(ncol=2, fontsize=8)
 
-    ax2.plot(time_ms, accel_g, color="tab:red", linewidth=1.2)
-    ax2.axhline(y=0, color="gray", linewidth=0.8, linestyle="--")
-    ax2.set_xlabel("Time (ms)")
-    ax2.set_ylabel("Base Accel (g)")
+    ax2.plot(time_ms, accel_g, color='tab:red', linewidth=1.2)
+    ax2.axhline(y=0, color='gray', linewidth=0.8, linestyle='--')
+    ax2.set_xlabel('Time (ms)')
+    ax2.set_ylabel('Base Accel (g)')
     ax2.set_xlim(0, PLOT_DURATION_MS)
     ax2.grid(True, alpha=0.3)
 
@@ -267,7 +283,7 @@ def plot_displacement_colored_by_force(
     *,
     heights_from_model: dict[str, float] | None = None,
     buttocks_height_mm: float = DEFAULT_BUTTOCKS_HEIGHT_MM,
-    reference_frame: str = "base",
+    reference_frame: str = 'base',
     show_element_thickness: bool = False,
     stack_elements: bool = True,
     buttocks_clamp_to_height: bool = True,
@@ -284,20 +300,22 @@ def plot_displacement_colored_by_force(
         stack_elements=stack_elements,
     )
 
-    centers_mm, lower_mm, upper_mm, ylabel, ref_line, ref_label = _apply_reference_frame_to_elements(
-        centers_mm,
-        lower_mm,
-        upper_mm,
-        node_names,
-        y_mm,
-        rest_lengths_mm,
-        reference_frame,
+    centers_mm, lower_mm, upper_mm, ylabel, ref_line, ref_label = (
+        _apply_reference_frame_to_elements(
+            centers_mm,
+            lower_mm,
+            upper_mm,
+            node_names,
+            y_mm,
+            rest_lengths_mm,
+            reference_frame,
+        )
     )
 
     time_ms = time_s * 1000
 
     fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(14, 10), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
+        2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]}
     )
 
     n_elems = min(len(elem_names), centers_mm.shape[1])
@@ -306,16 +324,16 @@ def plot_displacement_colored_by_force(
     fmin = min(float(np.min(forces_kN)), 0.0)
     fmax = max(float(np.max(forces_kN)), 1.0)
     norm = plt.Normalize(vmin=fmin, vmax=fmax)
-    cmap = plt.get_cmap("plasma")
+    cmap = plt.get_cmap('plasma')
 
-    ax1.axhline(y=ref_line, color="black", linewidth=2.0, label=ref_label)
+    ax1.axhline(y=ref_line, color='black', linewidth=2.0, label=ref_label)
 
     if show_element_thickness or n_elems > 0:
         ax1.fill_between(
             time_ms,
             lower_mm[:, 0],
             upper_mm[:, 0],
-            color="lightgray",
+            color='lightgray',
             alpha=0.3,
             linewidth=0.0,
         )
@@ -337,23 +355,23 @@ def plot_displacement_colored_by_force(
     ax1.set_ylim(ymin - 20.0, ymax + 20.0)
 
     ax1.set_ylabel(ylabel)
-    ax1.set_title("Element Centers Colored by Element Force")
+    ax1.set_title('Element Centers Colored by Element Force')
     ax1.grid(True, alpha=0.3)
 
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=ax1)
-    cbar.set_label("Force (kN)")
+    cbar.set_label('Force (kN)')
 
-    ax2.plot(time_ms, accel_g, color="tab:red", linewidth=1.2)
-    ax2.axhline(y=0, color="gray", linewidth=0.8, linestyle="--")
-    ax2.set_xlabel("Time (ms)")
-    ax2.set_ylabel("Base Accel (g)")
+    ax2.plot(time_ms, accel_g, color='tab:red', linewidth=1.2)
+    ax2.axhline(y=0, color='gray', linewidth=0.8, linestyle='--')
+    ax2.set_xlabel('Time (ms)')
+    ax2.set_ylabel('Base Accel (g)')
     ax2.set_xlim(0, PLOT_DURATION_MS)
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(out_path, dpi=160, bbox_inches="tight")
+    plt.savefig(out_path, dpi=160, bbox_inches='tight')
     plt.close()
 
 
@@ -389,18 +407,20 @@ def plot_gravity_settling(
         stack_elements=stack_elements,
     )
 
-    centers_mm, lower_mm, upper_mm, ylabel, ref_line, ref_label = _apply_reference_frame_to_elements(
-        centers_mm,
-        lower_mm,
-        upper_mm,
-        node_names,
-        y_mm,
-        rest_lengths_mm,
-        reference_frame="base",
+    centers_mm, lower_mm, upper_mm, ylabel, ref_line, ref_label = (
+        _apply_reference_frame_to_elements(
+            centers_mm,
+            lower_mm,
+            upper_mm,
+            node_names,
+            y_mm,
+            rest_lengths_mm,
+            reference_frame='base',
+        )
     )
 
     plt.figure(figsize=(14, 8))
-    plt.axhline(y=ref_line, color="black", linewidth=2.0, label=ref_label)
+    plt.axhline(y=ref_line, color='black', linewidth=2.0, label=ref_label)
 
     n_elems = min(len(elem_names), centers_mm.shape[1])
     colors = plt.cm.viridis(np.linspace(0, 0.9, n_elems))
@@ -414,15 +434,17 @@ def plot_gravity_settling(
                 alpha=0.18,
                 linewidth=0.0,
             )
-        plt.plot(time_s * 1000, centers_mm[:, i], label=elem_names[i], linewidth=1.4, color=colors[i])
+        plt.plot(
+            time_s * 1000, centers_mm[:, i], label=elem_names[i], linewidth=1.4, color=colors[i]
+        )
 
-    plt.xlabel("Time (ms)")
+    plt.xlabel('Time (ms)')
     plt.ylabel(ylabel)
-    plt.title("Gravity Settling Phase (base-referenced)")
+    plt.title('Gravity Settling Phase (base-referenced)')
     plt.grid(True, alpha=0.3)
-    plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
+    plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=160, bbox_inches="tight")
+    plt.savefig(out_path, dpi=160, bbox_inches='tight')
     plt.close()
 
 
@@ -442,31 +464,39 @@ def plot_buttocks_only(
     compression_mm = np.maximum(-(y_mm + gap_mm), 0.0)
     force_kN = forces_n[:, 0] / 1000.0
 
-    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True, gridspec_kw={"height_ratios": [2, 2, 1]})
+    fig, axes = plt.subplots(
+        3, 1, figsize=(12, 10), sharex=True, gridspec_kw={'height_ratios': [2, 2, 1]}
+    )
 
-    axes[0].plot(time_ms, torso_down_mm, label="Torso downward displacement", linewidth=1.6)
-    axes[0].plot(time_ms, compression_mm, label="Buttocks compression", linewidth=1.6)
+    axes[0].plot(time_ms, torso_down_mm, label='Torso downward displacement', linewidth=1.6)
+    axes[0].plot(time_ms, compression_mm, label='Buttocks compression', linewidth=1.6)
     if compression_limit_mm is not None:
-        axes[0].axhline(y=compression_limit_mm, color="gray", linestyle="--", linewidth=1.0, label="Compression limit")
+        axes[0].axhline(
+            y=compression_limit_mm,
+            color='gray',
+            linestyle='--',
+            linewidth=1.0,
+            label='Compression limit',
+        )
 
-    axes[0].set_ylabel("Displacement (mm)")
-    axes[0].set_title("Buttocks-Only Response")
+    axes[0].set_ylabel('Displacement (mm)')
+    axes[0].set_title('Buttocks-Only Response')
     axes[0].set_xlim(0, PLOT_DURATION_MS)
     axes[0].grid(True, alpha=0.3)
-    axes[0].legend(loc="upper right")
+    axes[0].legend(loc='upper right')
 
-    axes[1].plot(time_ms, force_kN, color="tab:blue", linewidth=1.6)
-    axes[1].set_ylabel("Buttocks Force (kN)")
+    axes[1].plot(time_ms, force_kN, color='tab:blue', linewidth=1.6)
+    axes[1].set_ylabel('Buttocks Force (kN)')
     axes[1].set_xlim(0, PLOT_DURATION_MS)
     axes[1].grid(True, alpha=0.3)
 
-    axes[2].plot(time_ms, accel_g, color="tab:red", linewidth=1.2)
-    axes[2].axhline(y=0, color="gray", linewidth=0.8, linestyle="--")
-    axes[2].set_xlabel("Time (ms)")
-    axes[2].set_ylabel("Base Accel (g)")
+    axes[2].plot(time_ms, accel_g, color='tab:red', linewidth=1.2)
+    axes[2].axhline(y=0, color='gray', linewidth=0.8, linestyle='--')
+    axes[2].set_xlabel('Time (ms)')
+    axes[2].set_ylabel('Base Accel (g)')
     axes[2].set_xlim(0, PLOT_DURATION_MS)
     axes[2].grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(out_path, dpi=160, bbox_inches="tight")
+    plt.savefig(out_path, dpi=160, bbox_inches='tight')
     plt.close()

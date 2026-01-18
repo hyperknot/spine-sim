@@ -14,13 +14,13 @@ class TimeSeries:
 
 
 def _detect_delimiter(header_line: str) -> str:
-    semicolons = header_line.count(";")
-    commas = header_line.count(",")
-    return ";" if semicolons >= commas and semicolons > 0 else ","
+    semicolons = header_line.count(';')
+    commas = header_line.count(',')
+    return ';' if semicolons >= commas and semicolons > 0 else ','
 
 
 def _parse_number(s: str) -> float:
-    return float(s.strip().replace(",", "."))
+    return float(s.strip().replace(',', '.'))
 
 
 def _detect_time_is_ms(max_time: float) -> bool:
@@ -50,11 +50,11 @@ def parse_csv_series(
     time_candidates: Iterable[str],
     value_candidates: Iterable[str],
 ) -> TimeSeries:
-    text = path.read_text(encoding="utf-8", errors="ignore")
-    lines = [l.strip() for l in text.splitlines() if l.strip() and not l.strip().startswith("#")]
+    text = path.read_text(encoding='utf-8', errors='ignore')
+    lines = [l.strip() for l in text.splitlines() if l.strip() and not l.strip().startswith('#')]
 
     header_idx = _find_header_idx(
-        lines, required=["time", "accel"] if "accel" in value_candidates else ["time"]
+        lines, required=['time', 'accel'] if 'accel' in value_candidates else ['time']
     )
     if header_idx == -1:
         header_idx = 0
@@ -68,7 +68,7 @@ def parse_csv_series(
     col_val = _find_col(headers, value_candidates)
 
     if col_time == -1 or col_val == -1:
-        raise ValueError(f"Missing columns in {path.name}: time={col_time}, value={col_val}")
+        raise ValueError(f'Missing columns in {path.name}: time={col_time}, value={col_val}')
 
     raw_rows: list[tuple[float, float]] = []
     for line in lines[header_idx + 1 :]:
@@ -83,7 +83,7 @@ def parse_csv_series(
         raw_rows.append((t, v))
 
     if not raw_rows:
-        raise ValueError(f"No valid rows found in {path.name}")
+        raise ValueError(f'No valid rows found in {path.name}')
 
     max_time = max(r[0] for r in raw_rows)
     is_ms = _detect_time_is_ms(max_time)

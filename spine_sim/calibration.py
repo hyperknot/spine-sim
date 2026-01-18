@@ -12,6 +12,7 @@ from .model import SpineModel, initial_state_static, newmark_nonlinear
 @dataclass
 class CalibrationCase:
     """A single calibration case with input acceleration and target force."""
+
     name: str
     time_s: np.ndarray
     accel_g: np.ndarray
@@ -26,6 +27,7 @@ class PeakCalibrationCase:
 
     We calibrate to the peak of a specific element force (e.g., T12-L1).
     """
+
     name: str
     time_s: np.ndarray
     accel_g: np.ndarray
@@ -101,10 +103,10 @@ def calibrate_model(
     """
     if init_scales is None:
         init_scales = {
-            "s_k_spine": 1.0,
-            "s_c_spine": 1.0,
-            "s_k_butt": 1.0,
-            "s_c_butt": 1.0,
+            's_k_spine': 1.0,
+            's_c_spine': 1.0,
+            's_k_butt': 1.0,
+            's_c_butt': 1.0,
         }
 
     if apply_scales is None:
@@ -113,10 +115,10 @@ def calibrate_model(
     x0 = np.log(
         np.array(
             [
-                init_scales["s_k_spine"],
-                init_scales["s_c_spine"],
-                init_scales["s_k_butt"],
-                init_scales["s_c_butt"],
+                init_scales['s_k_spine'],
+                init_scales['s_c_spine'],
+                init_scales['s_k_butt'],
+                init_scales['s_c_butt'],
             ],
             dtype=float,
         )
@@ -145,10 +147,10 @@ def calibrate_model(
 
     s = np.exp(result.x)
     scales = {
-        "s_k_spine": float(s[0]),
-        "s_c_spine": float(s[1]),
-        "s_k_butt": float(s[2]),
-        "s_c_butt": float(s[3]),
+        's_k_spine': float(s[0]),
+        's_c_spine': float(s[1]),
+        's_k_butt': float(s[2]),
+        's_c_butt': float(s[3]),
     }
 
     return CalibrationResult(
@@ -176,10 +178,10 @@ def calibrate_model_peaks(
     """
     if init_scales is None:
         init_scales = {
-            "s_k_spine": 1.0,
-            "s_c_spine": 1.0,
-            "s_k_butt": 1.0,
-            "s_c_butt": 1.0,
+            's_k_spine': 1.0,
+            's_c_spine': 1.0,
+            's_k_butt': 1.0,
+            's_c_butt': 1.0,
         }
 
     if apply_scales is None:
@@ -189,10 +191,10 @@ def calibrate_model_peaks(
         x0 = np.log(
             np.array(
                 [
-                    init_scales["s_k_spine"],
-                    init_scales["s_c_spine"],
-                    init_scales["s_k_butt"],
-                    init_scales["s_c_butt"],
+                    init_scales['s_k_spine'],
+                    init_scales['s_c_spine'],
+                    init_scales['s_k_butt'],
+                    init_scales['s_c_butt'],
                 ],
                 dtype=float,
             )
@@ -206,8 +208,8 @@ def calibrate_model_peaks(
         x0 = np.log(
             np.array(
                 [
-                    init_scales["s_k_spine"],
-                    init_scales["s_k_butt"],
+                    init_scales['s_k_spine'],
+                    init_scales['s_k_butt'],
                 ],
                 dtype=float,
             )
@@ -254,10 +256,10 @@ def calibrate_model_peaks(
     s = np.exp(result.x)
     s_k_spine, s_c_spine, s_k_butt, s_c_butt = unpack(s)
     scales = {
-        "s_k_spine": float(s_k_spine),
-        "s_c_spine": float(s_c_spine),
-        "s_k_butt": float(s_k_butt),
-        "s_c_butt": float(s_c_butt),
+        's_k_spine': float(s_k_spine),
+        's_c_spine': float(s_c_spine),
+        's_k_butt': float(s_k_butt),
+        's_c_butt': float(s_c_butt),
     }
 
     return CalibrationResult(
@@ -271,8 +273,8 @@ def calibrate_model_peaks(
 def apply_calibration(base_model: SpineModel, scales: dict) -> SpineModel:
     return _apply_scales(
         base_model,
-        scales["s_k_spine"],
-        scales["s_c_spine"],
-        scales["s_k_butt"],
-        scales["s_c_butt"],
+        scales['s_k_spine'],
+        scales['s_c_spine'],
+        scales['s_k_butt'],
+        scales['s_c_butt'],
     )

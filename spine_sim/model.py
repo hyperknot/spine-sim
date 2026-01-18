@@ -339,7 +339,7 @@ def newmark_nonlinear(
     base_accel_g = np.asarray(base_accel_g, dtype=float)
 
     if t.size < 2:
-        raise ValueError("Need at least 2 time samples for integration.")
+        raise ValueError('Need at least 2 time samples for integration.')
 
     dt = float(np.median(np.diff(t)))
     base_accel_mps2 = base_accel_g * G0
@@ -367,7 +367,7 @@ def newmark_nonlinear(
     else:
         s0 = np.asarray(s0, dtype=float)
         if s0.shape != (ne, B):
-            raise ValueError(f"s0 must have shape {(ne, B)}, got {s0.shape}.")
+            raise ValueError(f's0 must have shape {(ne, B)}, got {s0.shape}.')
 
     y[0] = y0
     v[0] = v0
@@ -444,7 +444,9 @@ def newmark_nonlinear(
     )
 
 
-def initial_state_static(model: SpineModel, base_accel_g0: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def initial_state_static(
+    model: SpineModel, base_accel_g0: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Nonlinear static equilibrium (Maxwell branches assumed relaxed)."""
     n = model.size()
     ne = model.n_elems()

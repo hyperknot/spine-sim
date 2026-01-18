@@ -76,10 +76,27 @@ def main() -> None:
 
     # Show spine heights for verification
     h = data['heights_relative_to_pelvis_mm']
-    spine_bodies = ['pelvis', 'lumbar5', 'lumbar4', 'lumbar3', 'lumbar2', 'lumbar1',
-                    'thoracic12', 'thoracic11', 'thoracic10', 'thoracic9', 'thoracic8',
-                    'thoracic7', 'thoracic6', 'thoracic5', 'thoracic4', 'thoracic3',
-                    'thoracic2', 'thoracic1', 'head_neck']
+    spine_bodies = [
+        'pelvis',
+        'lumbar5',
+        'lumbar4',
+        'lumbar3',
+        'lumbar2',
+        'lumbar1',
+        'thoracic12',
+        'thoracic11',
+        'thoracic10',
+        'thoracic9',
+        'thoracic8',
+        'thoracic7',
+        'thoracic6',
+        'thoracic5',
+        'thoracic4',
+        'thoracic3',
+        'thoracic2',
+        'thoracic1',
+        'head_neck',
+    ]
     print('\nSpine heights relative to pelvis:')
     for name in spine_bodies:
         if name in h:
