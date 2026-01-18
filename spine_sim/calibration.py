@@ -43,6 +43,13 @@ def _apply_scales(
     k[1:] *= s_k_spine
     c[1:] *= s_c_spine
 
+    # Maxwell branches scale with the same stiffness scalings (damping/time constants are separate concepts,
+    # but in this simplified identification we scale k only).
+    mx_k = base_model.maxwell_k.copy()
+    if mx_k.size:
+        mx_k[0, :] *= s_k_butt
+        mx_k[1:, :] *= s_k_spine
+
     return SpineModel(
         node_names=base_model.node_names,
         masses_kg=base_model.masses_kg,
@@ -55,6 +62,9 @@ def _apply_scales(
         compression_only=base_model.compression_only,
         damping_compression_only=base_model.damping_compression_only,
         gap_m=base_model.gap_m,
+        maxwell_k=mx_k,
+        maxwell_tau_s=base_model.maxwell_tau_s,
+        maxwell_compression_only=base_model.maxwell_compression_only,
     )
 
 
@@ -64,6 +74,9 @@ def calibrate_to_yoganandan(
     t12_element_index: int,
     init_scales: dict | None = None,
 ) -> CalibResult:
+    """
+    Waveform-based calibration (requires digitized force time histories).
+    """
     if init_scales is None:
         init_scales = {
             "s_k_spine": 1.0,
@@ -92,8 +105,8 @@ def calibrate_to_yoganandan(
 
         res_all = []
         for case in cases:
-            y0, v0 = initial_state_static(model, base_accel_g0=0.0)
-            sim = newmark_nonlinear(model, case.time_s, case.accel_g, y0, v0)
+            y0, v0, s0 = initial_state_static(model, base_accel_g0=0.0)
+            sim = newmark_nonlinear(model, case.time_s, case.accel_g, y0, v0, s0)
 
             pred_force = sim.element_forces_n[:, t12_element_index]
             pred_force_interp = np.interp(case.force_time_s, sim.time_s, pred_force)

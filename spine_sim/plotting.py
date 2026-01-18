@@ -60,13 +60,12 @@ def _apply_reference_frame(
 ) -> tuple[np.ndarray, str, float]:
     """
     reference_frame:
-      - "base": absolute heights above base plate (old behavior)
-      - "pelvis": subtract pelvis motion so pelvis stays fixed (recommended for your request)
+      - "base": absolute heights above base plate
+      - "pelvis": subtract pelvis motion so pelvis stays fixed
     """
     if reference_frame == "pelvis":
         pelvis_idx = node_names.index("pelvis")
         pelvis_pos = positions_mm[:, pelvis_idx]
-        # anchor pelvis to 0 in plot frame
         positions_mm = positions_mm - pelvis_pos[:, None]
         return positions_mm, "Height relative to pelvis (mm)", 0.0
 
@@ -105,7 +104,6 @@ def plot_displacements(
     plt.close()
 
 
-
 def plot_forces(
     time_s: np.ndarray,
     forces_n: np.ndarray,
@@ -118,16 +116,15 @@ def plot_forces(
     for i, name in enumerate(elem_names):
         lw = 2.0 if name == highlight else 1.0
         plt.plot(time_s * 1000, forces_n[:, i] / 1000.0, label=name, linewidth=lw)
-    plt.xlabel('Time (ms)')
-    plt.ylabel('Force (kN)')
-    plt.title('Junction Forces vs Time (Compression Positive)')
+    plt.xlabel("Time (ms)")
+    plt.ylabel("Force (kN)")
+    plt.title("Junction Forces vs Time (Compression Positive)")
     plt.xlim(0, PLOT_DURATION_MS)
     plt.grid(True, alpha=0.3)
     plt.legend(ncol=2, fontsize=8)
     plt.tight_layout()
     plt.savefig(out_path, dpi=160)
     plt.close()
-
 
 
 def plot_displacement_colored_by_force(
@@ -168,6 +165,10 @@ def plot_displacement_colored_by_force(
         ax.add_collection(lc)
 
     ax.set_xlim(0, PLOT_DURATION_MS)
+    ymin = float(np.min(positions_mm))
+    ymax = float(np.max(positions_mm))
+    ax.set_ylim(ymin - 20.0, ymax + 20.0)
+
     ax.set_xlabel("Time (ms)")
     ax.set_ylabel(ylabel)
     ax.set_title("Spine Side View - Colored by Junction Force Below")
@@ -178,6 +179,45 @@ def plot_displacement_colored_by_force(
     cbar = fig.colorbar(sm, ax=ax)
     cbar.set_label("Force (kN)")
 
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=160, bbox_inches="tight")
+    plt.close()
+
+def plot_gravity_tensioning(
+    time_s: np.ndarray,
+    y: np.ndarray,
+    node_names: list[str],
+    out_path: Path,
+    *,
+    heights_from_model: dict[str, float] | None = None,
+) -> None:
+    """
+    Gravity-tensioning phase plot.
+
+    Requirement:
+      - Exactly like displacements plot
+      - Reference frame is the excitor plate (base), NOT the pelvis.
+      - Base/excitor line should be at 0 mm.
+    """
+    # Put the excitor plate at 0 mm by setting buttocks_height_mm=0
+    initial_heights_mm = _build_height_map(
+        node_names, heights_from_model, buttocks_height_mm=0.0
+    )
+    positions_mm = initial_heights_mm[np.newaxis, :] + y * 1000.0
+    positions_mm, ylabel, ref_line = _apply_reference_frame(positions_mm, node_names, reference_frame="base")
+
+    plt.figure(figsize=(14, 8))
+    plt.axhline(y=0.0, color="black", linewidth=2.0, label="excitor plate (base)")
+
+    colors = plt.cm.viridis(np.linspace(0, 0.9, len(node_names)))
+    for i, name in enumerate(node_names):
+        plt.plot(time_s * 1000, positions_mm[:, i], label=name, linewidth=1.4, color=colors[i])
+
+    plt.xlabel("Time (ms)")
+    plt.ylabel(ylabel.replace("Height above seat", "Height above excitor plate (mm)"))
+    plt.title("Gravity-tensioning / settling phase (base-referenced)")
+    plt.grid(True, alpha=0.3)
+    plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
     plt.tight_layout()
     plt.savefig(out_path, dpi=160, bbox_inches="tight")
     plt.close()
