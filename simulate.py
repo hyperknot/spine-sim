@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from spine_sim.calibration import CalibrationCase, apply_calibration, calibrate_model
+from spine_sim.calibration import CalibrationCase, PeakCalibrationCase
+from spine_sim.calibration_store import load_calibration_scales, write_calibration_result
 from spine_sim.filters import cfc_filter
 from spine_sim.io import parse_csv_series, resample_to_uniform
-from spine_sim.model import SpineModel, initial_state_static, newmark_nonlinear
+from spine_sim.model import newmark_nonlinear
+from spine_sim.model_paths import get_model_path
 from spine_sim.plotting import (
     plot_displacement_colored_by_force,
     plot_displacements,
@@ -40,8 +43,10 @@ DEFAULT_MASSES_JSON_PATH = Path(__file__).parent / "opensim" / "fullbody.json"
 DROPS_DIR = Path(__file__).parent / "drops"
 DROPS_PATTERN = "*.csv"
 
-# Calibration data directory
-CALIBRATION_DIR = Path(__file__).parent / "yoganandan"
+# Calibration folder (required)
+CALIBRATION_ROOT = Path(__file__).parent / "calibration"
+CALIBRATION_YOGANANDAN_DIR = CALIBRATION_ROOT / "yoganandan"
+CALIBRATION_CASE_NAMES = ["50ms", "75ms", "100ms", "150ms", "200ms"]
 
 # Calibration force sign: -1 because Yoganandan reports compression as negative
 CALIBRATION_FORCE_SIGN = -1.0
@@ -106,15 +111,6 @@ def build_mass_map(masses: dict, arm_recruitment: float, helmet_mass: float) -> 
 
 
 def _detect_style(duration_ms: float) -> str:
-    """
-    Simple duration-based style detection.
-
-    - drop-style (>= 300 ms): paragliding harness drop test standard
-      starts ~0g, drops to -1g freefall, positive peak, possible bounce
-
-    - flat-style (< 300 ms): excitor plate / calibration pulses
-      resting on ground (gravity-settled), starts ~0g, positive peak, ends ~0g
-    """
     if duration_ms < STYLE_DURATION_THRESHOLD_MS:
         return "flat"
     return "drop"
@@ -124,18 +120,7 @@ def _freefall_bias_correct(
     accel_g: np.ndarray,
     apply_correction: bool = True,
 ) -> tuple[np.ndarray, float | None, float, bool]:
-    """
-    For drop-style: estimate freefall baseline from samples 50-100 and optionally correct to -1g.
-
-    Returns:
-        corrected_accel: acceleration array (possibly corrected)
-        freefall_median: median of samples 50-100 (or None if not enough samples)
-        bias: the correction that was (or would be) applied
-        applied: whether correction was actually applied
-    """
-    # Use samples 50-100 for freefall estimation
     if len(accel_g) < 100:
-        # Not enough samples, try what we have
         if len(accel_g) > 50:
             samples = accel_g[50:]
         else:
@@ -157,336 +142,50 @@ def _freefall_bias_correct(
         return accel_g, ff_median, bias, False
 
 
-def build_spine_model(mass_map: dict, nonlinear_cfg: dict | None = None) -> SpineModel:
-    nonlinear_cfg = nonlinear_cfg or {}
-
-    node_names = [
-        "pelvis",
-        "L5",
-        "L4",
-        "L3",
-        "L2",
-        "L1",
-        "T12",
-        "T11",
-        "T10",
-        "T9",
-        "T8",
-        "T7",
-        "T6",
-        "T5",
-        "T4",
-        "T3",
-        "T2",
-        "T1",
-        "HEAD",
-    ]
-
-    masses = np.array(
-        [
-            mass_map["pelvis"],
-            mass_map["l5"],
-            mass_map["l4"],
-            mass_map["l3"],
-            mass_map["l2"],
-            mass_map["l1"],
-            mass_map["t12"],
-            mass_map["t11"],
-            mass_map["t10"],
-            mass_map["t9"],
-            mass_map["t8"],
-            mass_map["t7"],
-            mass_map["t6"],
-            mass_map["t5"],
-            mass_map["t4"],
-            mass_map["t3"],
-            mass_map["t2"],
-            mass_map["t1"],
-            mass_map["head"],
-        ],
-        dtype=float,
-    )
-
-    # Raj 2019 axial stiffnesses (N/m)
-    k = {
-        "head-c1": 0.55e6,
-        "c1-c2": 0.3e6,
-        "c2-c3": 0.7e6,
-        "c3-c4": 0.76e6,
-        "c4-c5": 0.794e6,
-        "c5-c6": 0.967e6,
-        "c6-c7": 1.014e6,
-        "c7-t1": 1.334e6,
-        "t1-t2": 0.7e6,
-        "t2-t3": 1.2e6,
-        "t3-t4": 1.5e6,
-        "t4-t5": 2.1e6,
-        "t5-t6": 1.9e6,
-        "t6-t7": 1.8e6,
-        "t7-t8": 1.5e6,
-        "t8-t9": 1.5e6,
-        "t9-t10": 1.5e6,
-        "t10-t11": 1.5e6,
-        "t11-t12": 1.5e6,
-        "t12-l1": 1.8e6,
-        "l1-l2": 2.13e6,
-        "l2-l3": 2.0e6,
-        "l3-l4": 2.0e6,
-        "l4-l5": 1.87e6,
-        "l5-s1": 1.47e6,
-    }
-
-    cerv_keys = ["head-c1", "c1-c2", "c2-c3", "c3-c4", "c4-c5", "c5-c6", "c6-c7", "c7-t1"]
-    k_cerv_eq = 1.0 / sum(1.0 / k[key] for key in cerv_keys)
-
-    c_base = float(nonlinear_cfg.get("c_base_ns_per_m", 1200.0))
-
-    def c_disc(name: str) -> float:
-        if name in ["t10-t11", "t11-t12", "t12-l1", "l1-l2", "l2-l3", "l3-l4", "l4-l5", "l5-s1"]:
-            return 3.0 * c_base
-        return c_base
-
-    element_names = [
-        "buttocks",
-        "L5-S1",
-        "L4-L5",
-        "L3-L4",
-        "L2-L3",
-        "L1-L2",
-        "T12-L1",
-        "T11-T12",
-        "T10-T11",
-        "T9-T10",
-        "T8-T9",
-        "T7-T8",
-        "T6-T7",
-        "T5-T6",
-        "T4-T5",
-        "T3-T4",
-        "T2-T3",
-        "T1-T2",
-        "T1-HEAD",
-    ]
-
-    k_elem = np.array(
-        [
-            8.8425e4,  # buttocks
-            k["l5-s1"],
-            k["l4-l5"],
-            k["l3-l4"],
-            k["l2-l3"],
-            k["l1-l2"],
-            k["t12-l1"],
-            k["t11-t12"],
-            k["t10-t11"],
-            k["t9-t10"],
-            k["t8-t9"],
-            k["t7-t8"],
-            k["t6-t7"],
-            k["t5-t6"],
-            k["t4-t5"],
-            k["t3-t4"],
-            k["t2-t3"],
-            k["t1-t2"],
-            k_cerv_eq,
-        ],
-        dtype=float,
-    )
-
-    c_elem = np.array(
-        [
-            1700.0,  # buttocks
-            c_disc("l5-s1"),
-            c_disc("l4-l5"),
-            c_disc("l3-l4"),
-            c_disc("l2-l3"),
-            c_disc("l1-l2"),
-            c_disc("t12-l1"),
-            c_disc("t11-t12"),
-            c_disc("t10-t11"),
-            c_disc("t9-t10"),
-            c_disc("t8-t9"),
-            c_disc("t7-t8"),
-            c_disc("t6-t7"),
-            c_disc("t5-t6"),
-            c_disc("t4-t5"),
-            c_disc("t3-t4"),
-            c_disc("t2-t3"),
-            c_disc("t1-t2"),
-            c_base / len(cerv_keys),
-        ],
-        dtype=float,
-    )
-
-    # ---------------------------------------------------------------------
-    # Nonlinear / contact-like behavior parameters (existing)
-    # ---------------------------------------------------------------------
-    disc_ref_mm = float(nonlinear_cfg.get("disc_ref_compression_mm", 2.0))
-    disc_kmult = float(nonlinear_cfg.get("disc_k_mult_at_ref", 8.0))
-    butt_ref_mm = float(nonlinear_cfg.get("buttocks_ref_compression_mm", 25.0))
-    butt_kmult = float(nonlinear_cfg.get("buttocks_k_mult_at_ref", 20.0))
-    butt_gap_mm = float(nonlinear_cfg.get("buttocks_gap_mm", 0.0))
-
-    compression_ref_m = np.zeros_like(k_elem, dtype=float)
-    compression_k_mult = np.ones_like(k_elem, dtype=float)
-    tension_k_mult = np.ones_like(k_elem, dtype=float)
-    compression_only = np.zeros_like(k_elem, dtype=bool)
-    damping_compression_only = np.zeros_like(k_elem, dtype=bool)
-    gap_m = np.zeros_like(k_elem, dtype=float)
-
-    # Buttocks element (index 0)
-    compression_ref_m[0] = butt_ref_mm / 1000.0
-    compression_k_mult[0] = butt_kmult
-    compression_only[0] = True
-    damping_compression_only[0] = True
-    gap_m[0] = butt_gap_mm / 1000.0
-
-    # Spine elements (index 1..)
-    compression_ref_m[1:] = disc_ref_mm / 1000.0
-    compression_k_mult[1:] = disc_kmult
-    tension_k_mult[1:] = 1.0
-
-    # ---------------------------------------------------------------------
-    # ZWT (Liu 2024) option
-    # ---------------------------------------------------------------------
-    zwt_cfg = nonlinear_cfg.get("zwt", {}) if isinstance(nonlinear_cfg.get("zwt", {}), dict) else {}
-    zwt_enabled = bool(zwt_cfg.get("enabled", False))
-
-    poly_k2 = None
-    poly_k3 = None
-
-    if zwt_enabled:
-        # Parameters from Liu 2024 Table 3 (units are MPa, s, microseconds).
-        # NOTE: These are for sheep lumbar discs under their protocol; use as a starting point only.
-        E0_pa = float(zwt_cfg.get("E0_MPa", 3.0)) * 1e6
-        E1_pa = float(zwt_cfg.get("E1_MPa", 9.15)) * 1e6
-        E2_pa = float(zwt_cfg.get("E2_MPa", 1.72)) * 1e6
-        alpha_pa = float(zwt_cfg.get("alpha_MPa", 116.80)) * 1e6
-        beta_pa = float(zwt_cfg.get("beta_MPa", 110.30)) * 1e6
-        theta1_s = float(zwt_cfg.get("theta1_s", 197.35))
-        theta2_s = float(zwt_cfg.get("theta2_us", 0.53)) * 1e-6
-
-        disc_height_m = float(zwt_cfg.get("disc_height_mm", 10.0)) / 1000.0
-        if disc_height_m <= 0.0:
-            raise ValueError("nonlinear.zwt.disc_height_mm must be > 0")
-
-        # How to interpret your existing k_elem values vs ZWT moduli:
-        # - "instantaneous" (default): treat Raj k_elem as ~ (E0+E1) stiffness for short events,
-        #   split into equilibrium spring k0 and a Maxwell-1 branch k1 so that k0+k1 ~= original.
-        # - "equilibrium": treat Raj k_elem as E0 stiffness and add Maxwell stiffness on top (often increases stiffness).
-        k_reference = str(zwt_cfg.get("k_reference", "instantaneous")).lower()
-        if k_reference not in ["instantaneous", "equilibrium"]:
-            raise ValueError("nonlinear.zwt.k_reference must be 'instantaneous' or 'equilibrium'")
-
-        poly_k2 = np.zeros_like(k_elem, dtype=float)
-        poly_k3 = np.zeros_like(k_elem, dtype=float)
-
-        # 2 Maxwell branches per ZWT
-        B = 2
-        maxwell_k = np.zeros((len(k_elem), B), dtype=float)
-        maxwell_tau_s = np.zeros((len(k_elem), B), dtype=float)
-
-        # Keep buttocks linear/damped as-is; set its Maxwell to zero.
-        maxwell_k[0, :] = 0.0
-        maxwell_tau_s[0, :] = 0.0
-
-        # Apply ZWT to spinal disc elements, but skip the final "T1-HEAD" equivalent element by default.
-        last_elem_idx = len(k_elem) - 1
-
-        for e in range(1, len(k_elem)):
-            if e == last_elem_idx:
-                # Cervical equivalent element: leave as your legacy model.
-                maxwell_k[e, :] = 0.0
-                maxwell_tau_s[e, :] = 0.0
-                continue
-
-            k_ref = float(k_elem[e])
-
-            if k_reference == "instantaneous":
-                # Split so k0 + k1 ~= k_ref based on E0 and E1.
-                denom = (E0_pa + E1_pa)
-                if denom <= 0.0:
-                    raise ValueError("Invalid ZWT E0+E1 (must be > 0).")
-
-                k0 = k_ref * (E0_pa / denom)   # equilibrium spring portion
-                k1 = k_ref * (E1_pa / denom)   # Maxwell-1 spring portion
-                k2_mx = k_ref * (E2_pa / denom)  # Maxwell-2 portion (usually tiny for Liu 2024 params)
-
-                k_elem[e] = k0
-                maxwell_k[e, 0] = k1
-                maxwell_k[e, 1] = k2_mx
-            else:
-                # Treat k_elem as k0 and add Maxwell stiffness according to ratios E1/E0, E2/E0.
-                k0 = k_ref
-                k_elem[e] = k0
-                maxwell_k[e, 0] = k0 * (E1_pa / E0_pa)
-                maxwell_k[e, 1] = k0 * (E2_pa / E0_pa)
-
-            maxwell_tau_s[e, 0] = theta1_s
-            maxwell_tau_s[e, 1] = theta2_s
-
-            # Nonlinear spring: sigma = E0*eps + alpha*eps^2 + beta*eps^3
-            # Map to force vs displacement using only disc height L:
-            # F = k0*x + k2*x^2 + k3*x^3, where:
-            #   k2 = k0*(alpha/E0)/L
-            #   k3 = k0*(beta/E0)/L^2
-            poly_k2[e] = k0 * (alpha_pa / E0_pa) / disc_height_m
-            poly_k3[e] = k0 * (beta_pa / E0_pa) / (disc_height_m * disc_height_m)
-
-        # In pure ZWT there is no extra Kelvin-Voigt damper in parallel with the spring network.
-        # Keep buttocks damper; remove disc dampers.
-        c_elem[1:] = 0.0
-    else:
-        # Legacy Maxwell branches from config
-        mx_k_ratios = nonlinear_cfg.get("maxwell_k_ratios", [1.0, 0.5])
-        mx_tau_ms = nonlinear_cfg.get("maxwell_tau_ms", [10.0, 120.0])
-
-        mx_k_ratios = [float(x) for x in mx_k_ratios]
-        mx_tau_ms = [float(x) for x in mx_tau_ms]
-        B = max(len(mx_k_ratios), len(mx_tau_ms))
-        mx_k_ratios = (mx_k_ratios + [0.0] * B)[:B]
-        mx_tau_ms = (mx_tau_ms + [0.0] * B)[:B]
-
-        maxwell_k = np.zeros((len(k_elem), B), dtype=float)
-        maxwell_tau_s = np.zeros((len(k_elem), B), dtype=float)
-
-        for e in range(len(k_elem)):
-            for b in range(B):
-                maxwell_k[e, b] = k_elem[e] * mx_k_ratios[b]
-                maxwell_tau_s[e, b] = mx_tau_ms[b] / 1000.0
-
-    maxwell_compression_only = np.ones(len(k_elem), dtype=bool)
-
-    return SpineModel(
-        node_names=node_names,
-        masses_kg=masses,
-        element_names=element_names,
-        k_elem=k_elem,
-        c_elem=c_elem,
-        compression_ref_m=compression_ref_m,
-        compression_k_mult=compression_k_mult,
-        tension_k_mult=tension_k_mult,
-        compression_only=compression_only,
-        damping_compression_only=damping_compression_only,
-        gap_m=gap_m,
-        maxwell_k=maxwell_k,
-        maxwell_tau_s=maxwell_tau_s,
-        maxwell_compression_only=maxwell_compression_only,
-        poly_k2=poly_k2,
-        poly_k3=poly_k3,
-    )
+def _read_config(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def load_calibration_cases(cases_config: list[dict]) -> list[CalibrationCase]:
+def _write_config(path: Path, config: dict) -> None:
+    path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+
+
+def _get_model_type(config: dict) -> str:
+    model_cfg = config.get("model", {})
+    return str(model_cfg.get("type", "maxwell")).lower()
+
+
+def _get_calibration_mode(config: dict) -> str:
+    calibration_cfg = config.get("calibration", {})
+    return str(calibration_cfg.get("mode", "peaks")).lower()
+
+
+def load_curve_calibration_cases() -> list[CalibrationCase]:
+    """
+    Curve calibration: expects files in calibration/yoganandan/:
+      accel_50ms.csv + force_50ms.csv, etc.
+    """
+    if not CALIBRATION_YOGANANDAN_DIR.exists():
+        raise FileNotFoundError(
+            f"Missing calibration directory: {CALIBRATION_YOGANANDAN_DIR}"
+        )
+
     cases = []
-    for c in cases_config:
+    for name in CALIBRATION_CASE_NAMES:
+        accel_path = CALIBRATION_YOGANANDAN_DIR / f"accel_{name}.csv"
+        force_path = CALIBRATION_YOGANANDAN_DIR / f"force_{name}.csv"
+        if not accel_path.exists() or not force_path.exists():
+            raise FileNotFoundError(
+                f"Missing calibration curve files for {name}: {accel_path.name}, {force_path.name}"
+            )
+
         accel_series = parse_csv_series(
-            CALIBRATION_DIR / c["accel_csv"],
+            accel_path,
             time_candidates=["time", "time0", "t"],
             value_candidates=["accel", "acceleration"],
         )
         force_series = parse_csv_series(
-            CALIBRATION_DIR / c["force_csv"],
+            force_path,
             time_candidates=["time", "time0", "t"],
             value_candidates=["force", "spinal", "load"],
         )
@@ -494,13 +193,12 @@ def load_calibration_cases(cases_config: list[dict]) -> list[CalibrationCase]:
         accel_series, _ = resample_to_uniform(accel_series)
         force_series, _ = resample_to_uniform(force_series)
 
-        # No baseline correction for calibration data - trust as-is
         accel_g = np.asarray(accel_series.values, dtype=float)
         force_n = np.asarray(force_series.values, dtype=float) * 1000.0 * CALIBRATION_FORCE_SIGN
 
         cases.append(
             CalibrationCase(
-                name=c["name"],
+                name=name,
                 time_s=np.asarray(accel_series.time_s, dtype=float),
                 accel_g=accel_g,
                 force_time_s=np.asarray(force_series.time_s, dtype=float),
@@ -508,6 +206,56 @@ def load_calibration_cases(cases_config: list[dict]) -> list[CalibrationCase]:
             )
         )
     return cases
+
+
+def load_peak_calibration_cases(
+    *,
+    drop_baseline_correction: bool,
+    settle_ms: float,
+) -> tuple[list[PeakCalibrationCase], list[dict]]:
+    """
+    Peak calibration: expects accel files in calibration/yoganandan/:
+      accel_50ms.csv ... accel_200ms.csv
+    """
+    if not CALIBRATION_YOGANANDAN_DIR.exists():
+        raise FileNotFoundError(
+            f"Missing calibration directory: {CALIBRATION_YOGANANDAN_DIR}"
+        )
+
+    cases: list[PeakCalibrationCase] = []
+    meta: list[dict] = []
+
+    for name in CALIBRATION_CASE_NAMES:
+        accel_path = CALIBRATION_YOGANANDAN_DIR / f"accel_{name}.csv"
+        if not accel_path.exists():
+            raise FileNotFoundError(
+                f"Missing peak calibration file for {name}: {accel_path.name}"
+            )
+
+        print(f"Loading peak-calibration case from {accel_path} -> {name}")
+
+        t, a_filtered_g, _a_raw_g, info = process_input_file(
+            accel_path,
+            cfc=CFC,
+            peak_threshold_g=PEAK_THRESHOLD_G,
+            freefall_threshold_g=FREEFALL_THRESHOLD_G,
+            sim_duration_ms=SIM_DURATION_MS,
+            drop_baseline_correction=drop_baseline_correction,
+        )
+
+        target_kN = float(CALIBRATION_T12L1_PEAKS_KN[name])
+        cases.append(
+            PeakCalibrationCase(
+                name=name,
+                time_s=np.asarray(t, dtype=float),
+                accel_g=np.asarray(a_filtered_g, dtype=float),
+                target_peak_force_n=target_kN * 1000.0,
+                settle_ms=(settle_ms if info.style == "flat" else 0.0),
+            )
+        )
+        meta.append({"name": name, "target_peak_kN": target_kN})
+
+    return cases, meta
 
 
 def process_input_file(
@@ -519,15 +267,6 @@ def process_input_file(
     sim_duration_ms: float,
     drop_baseline_correction: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, ProcessingInfo]:
-    """
-    Process input CSV file and return time, filtered accel, raw accel, and info.
-
-    Returns:
-        t_s: time array (seconds)
-        a_filtered_g: CFC-filtered acceleration (g)
-        a_raw_g: raw acceleration before CFC filtering (g)
-        info: processing metadata
-    """
     series = parse_csv_series(
         path,
         time_candidates=["time", "time0", "t"],
@@ -540,7 +279,6 @@ def process_input_file(
     accel_filtered = np.asarray(cfc_filter(accel_raw.tolist(), sample_rate, cfc), dtype=float)
     t_all = np.asarray(series.time_s, dtype=float)
 
-    # Calculate total duration for style detection
     total_duration_ms = float((t_all[-1] - t_all[0]) * 1000.0) if t_all.size >= 2 else 0.0
     style = _detect_style(total_duration_ms)
 
@@ -549,7 +287,6 @@ def process_input_file(
     print(f"    DEBUG: filtered min={np.min(accel_filtered):.4f} g, max={np.max(accel_filtered):.4f} g")
 
     if style == "flat":
-        # Flat-style: use entire signal, NO baseline correction - trust as-is
         start_idx = 0
         end_idx = len(t_all) - 1
 
@@ -557,7 +294,6 @@ def process_input_file(
         a_seg = accel_filtered.copy()
         a_raw_seg = accel_raw.copy()
 
-        # Extend to sim_duration if needed
         desired_n = int(round((sim_duration_ms / 1000.0) / dt)) + 1
         if len(t_seg) < desired_n:
             pad_n = desired_n - len(t_seg)
@@ -580,7 +316,6 @@ def process_input_file(
         )
         return t_seg, a_seg, a_raw_seg, info
 
-    # Drop-style: find hit range
     hit = find_hit_range(
         accel_filtered.tolist(),
         peak_threshold_g=peak_threshold_g,
@@ -598,17 +333,15 @@ def process_input_file(
     a_seg = accel_filtered[start_idx : end_idx + 1]
     a_raw_seg = accel_raw[start_idx : end_idx + 1]
 
-    # Bias correct to freefall = -1g (using samples 50-100)
     a_seg, ff_median, bias, applied = _freefall_bias_correct(a_seg, apply_correction=drop_baseline_correction)
     if applied:
         a_raw_seg = a_raw_seg + bias
 
-    # Extend to sim_duration if needed
     desired_n = int(round((sim_duration_ms / 1000.0) / dt)) + 1
     if len(t_seg) < desired_n:
         pad_n = desired_n - len(t_seg)
         t_pad = t_seg[-1] + dt * (np.arange(pad_n) + 1)
-        a_pad = -1.0 * np.ones(pad_n, dtype=float)  # freefall
+        a_pad = -1.0 * np.ones(pad_n, dtype=float)
         t_seg = np.concatenate([t_seg, t_pad])
         a_seg = np.concatenate([a_seg, a_pad])
         a_raw_seg = np.concatenate([a_raw_seg, a_pad])
@@ -625,6 +358,122 @@ def process_input_file(
         bias_correction_applied=applied,
     )
     return t_seg, a_seg, a_raw_seg, info
+
+
+def _run_calibrate_peaks(config_path: Path) -> None:
+    config = _read_config(config_path)
+    model_type = _get_model_type(config)
+    model_path = get_model_path(model_type)
+
+    masses_json_path = Path(config.get("model", {}).get("masses_json", str(DEFAULT_MASSES_JSON_PATH)))
+    masses_data = load_masses_json(masses_json_path)
+
+    arm_recruitment = float(config["model"].get("arm_recruitment", 0.5))
+    helmet_mass = float(config["model"].get("helmet_mass_kg", 0.7))
+    mass_map = build_mass_map(masses_data, arm_recruitment=arm_recruitment, helmet_mass=helmet_mass)
+
+    base_model = model_path.build_model(mass_map, config)
+    t12_elem_idx = base_model.element_names.index("T12-L1")
+
+    drop_baseline_correction = bool(config.get("drop_baseline_correction", True))
+    settle_ms = float(config.get("gravity_settle_ms", 150.0))
+
+    cases, case_meta = load_peak_calibration_cases(
+        drop_baseline_correction=drop_baseline_correction,
+        settle_ms=settle_ms,
+    )
+
+    init_scales = load_calibration_scales(model_type, "peaks", model_path.default_scales)
+    print(f"Running PEAK calibration for {model_type} (stiffness-only by default)...")
+
+    result = model_path.calibrate_peaks(
+        base_model,
+        cases,
+        t12_element_index=t12_elem_idx,
+        init_scales=init_scales,
+        calibrate_damping=False,
+    )
+
+    out_dir = Path(config.get("output_dir", "output"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "calibration_peaks_result.json").write_text(
+        json.dumps(
+            {
+                "mode": "peaks",
+                "model_type": model_type,
+                "success": result.success,
+                "cost": result.cost,
+                "residual_norm": result.residual_norm,
+                "scales": result.scales,
+                "cases": case_meta,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    write_calibration_result(model_type, "peaks", result, case_meta, model_path.default_scales)
+
+    print("Peak calibration complete. Updated calibration file:")
+    print(f"  {CALIBRATION_ROOT / f'{model_type}.json'}")
+
+
+def _run_calibrate_curves(config_path: Path) -> None:
+    config = _read_config(config_path)
+    model_type = _get_model_type(config)
+    model_path = get_model_path(model_type)
+
+    masses_json_path = Path(config.get("model", {}).get("masses_json", str(DEFAULT_MASSES_JSON_PATH)))
+    masses_data = load_masses_json(masses_json_path)
+
+    arm_recruitment = float(config["model"].get("arm_recruitment", 0.5))
+    helmet_mass = float(config["model"].get("helmet_mass_kg", 0.7))
+    mass_map = build_mass_map(masses_data, arm_recruitment=arm_recruitment, helmet_mass=helmet_mass)
+
+    base_model = model_path.build_model(mass_map, config)
+    t12_elem_idx = base_model.element_names.index("T12-L1")
+
+    cases = load_curve_calibration_cases()
+    init_scales = load_calibration_scales(model_type, "curves", model_path.default_scales)
+
+    print(f"Running CURVE calibration for {model_type} (requires calibration/yoganandan)...")
+    result = model_path.calibrate_curves(
+        base_model,
+        cases,
+        t12_elem_idx,
+        init_scales=init_scales,
+    )
+
+    out_dir = Path(config.get("output_dir", "output"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "calibration_curves_result.json").write_text(
+        json.dumps(
+            {
+                "mode": "curves",
+                "model_type": model_type,
+                "success": result.success,
+                "cost": result.cost,
+                "residual_norm": result.residual_norm,
+                "scales": result.scales,
+                "cases": [c.name for c in cases],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    write_calibration_result(
+        model_type,
+        "curves",
+        result,
+        [c.name for c in cases],
+        model_path.default_scales,
+    )
+
+    print("Curve calibration complete. Updated calibration file:")
+    print(f"  {CALIBRATION_ROOT / f'{model_type}.json'}")
 
 
 def write_timeseries_csv(
@@ -662,8 +511,30 @@ def write_timeseries_csv(
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--calibrate-peaks", action="store_true", help="Calibrate stiffness scales to Yoganandan peak forces and update calibration/<model>.json, then exit.")
+    parser.add_argument("--calibrate-curves", action="store_true", help="Calibrate to force-time curves (requires calibration/yoganandan/force_*.csv) and update calibration/<model>.json, then exit.")
+    args = parser.parse_args()
+
     config_path = Path(__file__).parent / "config.json"
-    config = json.loads(config_path.read_text(encoding="utf-8"))
+
+    if args.calibrate_peaks and args.calibrate_curves:
+        raise SystemExit("Choose only one: --calibrate-peaks OR --calibrate-curves.")
+
+    if args.calibrate_peaks:
+        _run_calibrate_peaks(config_path)
+        return
+
+    if args.calibrate_curves:
+        _run_calibrate_curves(config_path)
+        return
+
+    # Normal simulation run
+    config = _read_config(config_path)
+
+    model_type = _get_model_type(config)
+    model_path = get_model_path(model_type)
+    calibration_mode = _get_calibration_mode(config)
 
     masses_json_path = Path(config.get("model", {}).get("masses_json", str(DEFAULT_MASSES_JSON_PATH)))
     masses_data = load_masses_json(masses_json_path)
@@ -674,8 +545,11 @@ def main() -> None:
 
     heights_from_model = masses_data.get("heights_relative_to_pelvis_mm", None)
 
-    nonlinear_cfg = config.get("nonlinear", {})
-    model = build_spine_model(mass_map, nonlinear_cfg=nonlinear_cfg)
+    model = model_path.build_model(mass_map, config)
+
+    # Always apply calibration for the selected path + mode
+    scales = load_calibration_scales(model_type, calibration_mode, model_path.default_scales)
+    model = model_path.apply_calibration(model, scales)
 
     t12_elem_idx = model.element_names.index("T12-L1")
     butt_elem_idx = model.element_names.index("buttocks")
@@ -683,38 +557,7 @@ def main() -> None:
     out_dir = Path(config["output_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Calibration (only if explicitly enabled)
-    calib_cfg = config.get("calibration", {})
-    run_calibration = calib_cfg.get("run", False)
-
-    if run_calibration and "cases" in calib_cfg:
-        print("Running calibration...")
-        cases = load_calibration_cases(calib_cfg["cases"])
-        calib = calibrate_model(model, cases, t12_elem_idx)
-
-        (out_dir / "calibration_result.json").write_text(
-            json.dumps(
-                {
-                    "scales": calib.scales,
-                    "success": calib.success,
-                    "cost": calib.cost,
-                    "residual_norm": calib.residual_norm,
-                },
-                indent=2,
-            )
-        )
-
-        model = apply_calibration(model, calib.scales)
-
-        print("Calibration complete:")
-        print(f'  s_k_spine = {calib.scales["s_k_spine"]:.3f}')
-        print(f'  s_c_spine = {calib.scales["s_c_spine"]:.3f}')
-        print(f'  s_k_butt  = {calib.scales["s_k_butt"]:.3f}')
-        print(f'  s_c_butt  = {calib.scales["s_c_butt"]:.3f}')
-    else:
-        print("Calibration skipped (set calibration.run = true to enable)")
-
-    # Processing options
+    print(f"Model path: {model_type}, calibration: {calibration_mode}")
     drop_baseline_correction = config.get("drop_baseline_correction", True)
     print(f"Drop baseline correction: {'enabled' if drop_baseline_correction else 'disabled'}")
 
@@ -735,7 +578,6 @@ def main() -> None:
             drop_baseline_correction=drop_baseline_correction,
         )
 
-        # Initial conditions
         y0 = np.zeros(model.size(), dtype=float)
         v0 = np.zeros(model.size(), dtype=float)
         s0 = np.zeros((model.n_elems(), model.n_maxwell()), dtype=float)
@@ -745,7 +587,6 @@ def main() -> None:
             shutil.rmtree(run_dir)
         run_dir.mkdir(parents=True)
 
-        # For flat-style: run gravity settling first
         if info.style == "flat":
             dt = info.dt_s
             n_settle = int(round((settle_ms / 1000.0) / dt)) + 1
@@ -824,7 +665,6 @@ def main() -> None:
             reference_frame="pelvis",
         )
 
-        # Element compression metrics
         elem_max_comp_mm: dict[str, float] = {}
         for e_idx, ename in enumerate(model.element_names):
             if e_idx == 0:
@@ -867,7 +707,7 @@ def main() -> None:
             }
         )
 
-    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(f"\nResults written to {out_dir}/")
 
 

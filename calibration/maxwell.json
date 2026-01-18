@@ -1,0 +1,32 @@
+{
+  "model": "maxwell",
+  "active_mode": "peaks",
+  "peaks": {
+    "scales": {
+      "s_k_spine": 1.0,
+      "s_c_spine": 1.0,
+      "s_k_butt": 1.0,
+      "s_c_butt": 1.0
+    },
+    "result": {
+      "success": false,
+      "cost": null,
+      "residual_norm": null
+    },
+    "cases": []
+  },
+  "curves": {
+    "scales": {
+      "s_k_spine": 1.0,
+      "s_c_spine": 1.0,
+      "s_k_butt": 1.0,
+      "s_c_butt": 1.0
+    },
+    "result": {
+      "success": false,
+      "cost": null,
+      "residual_norm": null
+    },
+    "cases": []
+  }
+}
