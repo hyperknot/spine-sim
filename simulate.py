@@ -422,17 +422,27 @@ def process_drop_csv_fixed_duration(
     accel_raw = series.values
     accel_filtered = np.asarray(cfc_filter(accel_raw, sample_rate, cfc), dtype=float)
 
-    style = _detect_input_style(accel_filtered, sample_rate)
+    t_all = np.asarray(series.time_s, dtype=float)
+
+    # DEBUG: trace min values at each stage
+    duration_ms_raw = float((t_all[-1] - t_all[0]) * 1000.0) if t_all.size >= 2 else 0.0
+    print(f"  DEBUG: raw min={np.min(accel_raw):.4f}, max={np.max(accel_raw):.4f}")
+    print(f"  DEBUG: filtered min={np.min(accel_filtered):.4f}, max={np.max(accel_filtered):.4f}")
+    print(f"  DEBUG: duration={duration_ms_raw:.2f} ms")
+
+    style = _detect_input_style(t_all, accel_filtered)
 
     if style == "yoganandan":
         # No hit extraction; baseline ~0 g.
-        t_all = np.asarray(series.time_s, dtype=float)
         start_idx = 0
         end_idx = min(len(t_all) - 1, int(round((duration_ms / 1000.0) / dt)))
         t_seg = t_all[start_idx : end_idx + 1] - t_all[start_idx]
         a_seg = accel_filtered[start_idx : end_idx + 1]
 
+        print(f"  DEBUG yog: a_seg before baseline_zero_correct min={np.min(a_seg):.4f}, max={np.max(a_seg):.4f}, len={len(a_seg)}")
         a_seg, _base0 = _baseline_zero_correct(a_seg)
+        print(f"  DEBUG yog: baseline correction applied: {_base0:.4f}")
+        print(f"  DEBUG yog: a_seg after baseline_zero_correct min={np.min(a_seg):.4f}, max={np.max(a_seg):.4f}")
 
         desired_n = int(round((duration_ms / 1000.0) / dt)) + 1
         if len(t_seg) < desired_n:
@@ -441,6 +451,7 @@ def process_drop_csv_fixed_duration(
             a_pad = 0.0 * np.ones(pad_n, dtype=float)
             t_seg = np.concatenate([t_seg, t_pad])
             a_seg = np.concatenate([a_seg, a_pad])
+            print(f"  DEBUG yog: after padding min={np.min(a_seg):.4f}, max={np.max(a_seg):.4f}, len={len(a_seg)}")
 
         info = DropProcessingInfo(
             sample_rate_hz=float(sample_rate),
@@ -461,7 +472,6 @@ def process_drop_csv_fixed_duration(
         free_fall_threshold_g=freefall_g,
     )
 
-    t_all = np.asarray(series.time_s, dtype=float)
     if not hit:
         start_idx = 0
         end_idx = min(len(t_all) - 1, int(round((duration_ms / 1000.0) / dt)))
