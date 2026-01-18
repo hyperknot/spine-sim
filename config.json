@@ -1,6 +1,6 @@
 {
   "model": {
-    "type": "maxwell",
+    "type": "zwt",
     "masses_json": "opensim/fullbody.json",
     "arm_recruitment": 0.5,
     "helmet_mass_kg": 0.7
