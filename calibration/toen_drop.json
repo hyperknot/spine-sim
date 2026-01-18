@@ -1,0 +1,18 @@
+{
+  "active": true,
+  "result": {
+    "subject_id": "avg",
+    "target_set": "avg_measured",
+    "male50_mass_kg": 75.4,
+    "subject_total_mass_kg": 80.7,
+    "torso_mass_kg": 57.80645888594164,
+    "buttocks_k_n_per_m": 180500.0,
+    "buttocks_c_ns_per_m": 3130.0,
+    "impact_velocity_mps": 3.5,
+    "velocity_scale": 0.8040433733929419,
+    "success": true,
+    "cost": 0.00011918614291175088,
+    "residual_norm": 0.015439309758648595,
+    "nfev": 8
+  }
+}
