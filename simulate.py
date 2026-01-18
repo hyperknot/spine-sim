@@ -625,11 +625,8 @@ def main() -> None:
             plot_gravity_tensioning(
                 sim_settle.time_s,
                 sim_settle.y,
-                sim_settle.element_forces_n,
                 model.node_names,
-                model.element_names,
                 run_dir / "gravity_tensioning.png",
-                highlight_elem="T12-L1",
             )
 
             y0 = sim_settle.y[-1].copy()
