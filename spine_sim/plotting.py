@@ -424,3 +424,49 @@ def plot_gravity_settling(
     plt.tight_layout()
     plt.savefig(out_path, dpi=160, bbox_inches="tight")
     plt.close()
+
+
+def plot_buttocks_only(
+    time_s: np.ndarray,
+    y: np.ndarray,
+    forces_n: np.ndarray,
+    accel_g: np.ndarray,
+    out_path: Path,
+    *,
+    gap_mm: float = 0.0,
+    compression_limit_mm: float | None = None,
+) -> None:
+    time_ms = time_s * 1000.0
+    y_mm = y[:, 0] * 1000.0
+    torso_down_mm = -y_mm
+    compression_mm = np.maximum(-(y_mm + gap_mm), 0.0)
+    force_kN = forces_n[:, 0] / 1000.0
+
+    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True, gridspec_kw={"height_ratios": [2, 2, 1]})
+
+    axes[0].plot(time_ms, torso_down_mm, label="Torso downward displacement", linewidth=1.6)
+    axes[0].plot(time_ms, compression_mm, label="Buttocks compression", linewidth=1.6)
+    if compression_limit_mm is not None:
+        axes[0].axhline(y=compression_limit_mm, color="gray", linestyle="--", linewidth=1.0, label="Compression limit")
+
+    axes[0].set_ylabel("Displacement (mm)")
+    axes[0].set_title("Buttocks-Only Response")
+    axes[0].set_xlim(0, PLOT_DURATION_MS)
+    axes[0].grid(True, alpha=0.3)
+    axes[0].legend(loc="upper right")
+
+    axes[1].plot(time_ms, force_kN, color="tab:blue", linewidth=1.6)
+    axes[1].set_ylabel("Buttocks Force (kN)")
+    axes[1].set_xlim(0, PLOT_DURATION_MS)
+    axes[1].grid(True, alpha=0.3)
+
+    axes[2].plot(time_ms, accel_g, color="tab:red", linewidth=1.2)
+    axes[2].axhline(y=0, color="gray", linewidth=0.8, linestyle="--")
+    axes[2].set_xlabel("Time (ms)")
+    axes[2].set_ylabel("Base Accel (g)")
+    axes[2].set_xlim(0, PLOT_DURATION_MS)
+    axes[2].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=160, bbox_inches="tight")
+    plt.close()

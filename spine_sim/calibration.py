@@ -82,6 +82,8 @@ def _apply_scales(
         maxwell_compression_only=base_model.maxwell_compression_only,
         poly_k2=base_model.poly_k2,
         poly_k3=base_model.poly_k3,
+        compression_limit_m=base_model.compression_limit_m,
+        compression_stop_k=base_model.compression_stop_k,
     )
 
 

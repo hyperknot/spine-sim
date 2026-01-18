@@ -5,6 +5,17 @@
     "arm_recruitment": 0.5,
     "helmet_mass_kg": 0.7
   },
+  "buttocks_only": {
+    "k_n_per_m": 180500.0,
+    "c_ns_per_m": 3130.0,
+    "ref_compression_mm": 40.0,
+    "k_mult_at_ref": 1.0,
+    "compression_limit_mm": 45.0,
+    "compression_stop_k_n_per_m": 2000000.0,
+    "gap_mm": 0.0,
+    "poly_k2_n_per_m2": 0.0,
+    "poly_k3_n_per_m3": 0.0
+  },
   "maxwell": {
     "disc_ref_compression_mm": 2.0,
     "disc_k_mult_at_ref": 8.0,
@@ -44,7 +55,7 @@
   "gravity_settle_ms": 150.0,
   "output_dir": "output",
   "plotting": {
-    "buttocks_height_mm": 60.0,
+    "buttocks_height_mm": 500.0,
     "show_element_thickness": false,
     "stack_elements": true,
     "buttocks_clamp_to_height": true

@@ -3,15 +3,15 @@
   "active_mode": "peaks",
   "peaks": {
     "scales": {
-      "s_k_spine": 0.49913040411004905,
+      "s_k_spine": 19.99999999999958,
       "s_c_spine": 1.0,
-      "s_k_butt": 0.10344554848114777,
+      "s_k_butt": 0.05000000000000012,
       "s_c_butt": 1.0
     },
     "result": {
       "success": true,
-      "cost": 0.0024481974020358456,
-      "residual_norm": 0.06997424386209322
+      "cost": 2.9636037570831317,
+      "residual_norm": 2.434585696615805
     },
     "cases": [
       {

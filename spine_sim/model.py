@@ -39,6 +39,10 @@ class SpineModel:
     poly_k2: np.ndarray | None = None  # shape (N_elem,)
     poly_k3: np.ndarray | None = None  # shape (N_elem,)
 
+    # Optional compression limit / stop stiffness (bottom-out)
+    compression_limit_m: np.ndarray | None = None  # shape (N_elem,)
+    compression_stop_k: np.ndarray | None = None  # shape (N_elem,)
+
     def size(self) -> int:
         return len(self.node_names)
 
@@ -171,6 +175,13 @@ def _element_force_upper_and_partials(
             float(model.compression_k_mult[e_idx]),
         )
 
+    limit_m = None
+    stop_k = 0.0
+    if model.compression_limit_m is not None:
+        limit_m = float(model.compression_limit_m[e_idx])
+    if model.compression_stop_k is not None:
+        stop_k = float(model.compression_stop_k[e_idx])
+
     B = model.n_maxwell()
     s_new = np.zeros(B, dtype=float)
     dF_drelv_mx = 0.0
@@ -195,11 +206,17 @@ def _element_force_upper_and_partials(
 
     if in_compression:
         f_s = k_lin * x + k2 * x * x + k3 * x * x * x
+        dF_dx = k_lin + 2.0 * k2 * x + 3.0 * k3 * x * x
+
+        if limit_m is not None and limit_m > 0.0 and stop_k > 0.0 and x > limit_m:
+            x_excess = x - limit_m
+            f_s += stop_k * x_excess
+            dF_dx += stop_k
+
         f_d = (-c_lin * rel_v_mps) if use_damp else 0.0
         f_mx = float(np.sum(s_new))
         f = f_s + f_d + f_mx
 
-        dF_dx = k_lin + 2.0 * k2 * x + 3.0 * k3 * x * x
         dF_dext = -dF_dx
         dF_drelv = (-(c_lin) if use_damp else 0.0) + dF_drelv_mx
         return f, dF_dext, dF_drelv, s_new
