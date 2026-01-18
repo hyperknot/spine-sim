@@ -9,7 +9,8 @@ from .model import SpineModel, initial_state_static, newmark_nonlinear
 
 
 @dataclass
-class YogCase:
+class CalibrationCase:
+    """A single calibration case with input acceleration and target force."""
     name: str
     time_s: np.ndarray
     accel_g: np.ndarray
@@ -18,7 +19,7 @@ class YogCase:
 
 
 @dataclass
-class CalibResult:
+class CalibrationResult:
     scales: dict
     success: bool
     cost: float
@@ -35,16 +36,27 @@ def _apply_scales(
     k = base_model.k_elem.copy()
     c = base_model.c_elem.copy()
 
+    # Optional polynomial coefficients
+    poly_k2 = None if base_model.poly_k2 is None else base_model.poly_k2.copy()
+    poly_k3 = None if base_model.poly_k3 is None else base_model.poly_k3.copy()
+
     # Element 0 is buttocks
     k[0] *= s_k_butt
     c[0] *= s_c_butt
+    if poly_k2 is not None:
+        poly_k2[0] *= s_k_butt
+    if poly_k3 is not None:
+        poly_k3[0] *= s_k_butt
 
     # Spine elements
     k[1:] *= s_k_spine
     c[1:] *= s_c_spine
+    if poly_k2 is not None:
+        poly_k2[1:] *= s_k_spine
+    if poly_k3 is not None:
+        poly_k3[1:] *= s_k_spine
 
-    # Maxwell branches scale with the same stiffness scalings (damping/time constants are separate concepts,
-    # but in this simplified identification we scale k only).
+    # Maxwell branches scale with the same stiffness scalings
     mx_k = base_model.maxwell_k.copy()
     if mx_k.size:
         mx_k[0, :] *= s_k_butt
@@ -65,17 +77,19 @@ def _apply_scales(
         maxwell_k=mx_k,
         maxwell_tau_s=base_model.maxwell_tau_s,
         maxwell_compression_only=base_model.maxwell_compression_only,
+        poly_k2=poly_k2,
+        poly_k3=poly_k3,
     )
 
 
-def calibrate_to_yoganandan(
+def calibrate_model(
     base_model: SpineModel,
-    cases: list[YogCase],
+    cases: list[CalibrationCase],
     t12_element_index: int,
     init_scales: dict | None = None,
-) -> CalibResult:
+) -> CalibrationResult:
     """
-    Waveform-based calibration (requires digitized force time histories).
+    Waveform-based calibration using digitized force time histories.
     """
     if init_scales is None:
         init_scales = {
@@ -126,7 +140,7 @@ def calibrate_to_yoganandan(
         "s_c_butt": float(s[3]),
     }
 
-    return CalibResult(
+    return CalibrationResult(
         scales=scales,
         success=result.success,
         cost=float(result.cost),

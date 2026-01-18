@@ -1,40 +1,31 @@
 {
   "model": {
+    "masses_json": "opensim/fullbody.json",
     "arm_recruitment": 0.5,
     "helmet_mass_kg": 0.7
   },
-  "__yoganandan": {
+  "nonlinear": {
+    "disc_ref_compression_mm": 2.0,
+    "disc_k_mult_at_ref": 8.0,
+    "buttocks_ref_compression_mm": 25.0,
+    "buttocks_k_mult_at_ref": 20.0,
+    "maxwell_k_ratios": [1.0, 0.5],
+    "maxwell_tau_ms": [10.0, 120.0],
+    "enabled": true,
+    "disc_height_mm": 10.0,
+    "k_reference": "instantaneous"
+  },
+  "calibration": {
+    "run": false,
     "cases": [
-      {
-        "name": "50ms",
-        "accel_csv": "accel_50ms.csv",
-        "force_csv": "force_50ms.csv"
-      },
-      {
-        "name": "75ms",
-        "accel_csv": "accel_75ms.csv",
-        "force_csv": "force_75ms.csv"
-      },
-      {
-        "name": "100ms",
-        "accel_csv": "accel_100ms.csv",
-        "force_csv": "force_100ms.csv"
-      },
-      {
-        "name": "150ms",
-        "accel_csv": "accel_150ms.csv",
-        "force_csv": "force_150ms.csv"
-      },
-      {
-        "name": "200ms",
-        "accel_csv": "accel_200ms.csv",
-        "force_csv": "force_200ms.csv"
-      }
+      {"name": "50ms", "accel_csv": "accel_50ms.csv", "force_csv": "force_50ms.csv"},
+      {"name": "75ms", "accel_csv": "accel_75ms.csv", "force_csv": "force_75ms.csv"},
+      {"name": "100ms", "accel_csv": "accel_100ms.csv", "force_csv": "force_100ms.csv"},
+      {"name": "150ms", "accel_csv": "accel_150ms.csv", "force_csv": "force_150ms.csv"},
+      {"name": "200ms", "accel_csv": "accel_200ms.csv", "force_csv": "force_200ms.csv"}
     ]
   },
-  "drops": {
-    "input_dir": "drops",
-    "pattern": "*.csv"
-  },
-  "output_dir": "results"
+  "drop_baseline_correction": true,
+  "gravity_settle_ms": 150.0,
+  "output_dir": "output"
 }

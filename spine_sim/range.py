@@ -9,19 +9,25 @@ class HitRange:
     end_idx: int
 
 
-def find_first_hit_range(
+def find_hit_range(
     accel_g: list[float],
     peak_threshold_g: float = 5.0,
-    free_fall_threshold_g: float = -0.85,
+    freefall_threshold_g: float = -0.85,
 ) -> HitRange | None:
+    """
+    Find the first impact event in drop-style acceleration data.
+
+    Searches for first peak above threshold, then expands left/right
+    to freefall boundaries.
+    """
     n = len(accel_g)
     if n == 0:
         return None
 
+    # Find first significant peak
     peak_idx = -1
     for i in range(n):
         if accel_g[i] > peak_threshold_g:
-            # Find local max in this peak region
             local_max = accel_g[i]
             local_idx = i
             j = i + 1
@@ -36,15 +42,17 @@ def find_first_hit_range(
     if peak_idx == -1:
         return None
 
+    # Expand left to freefall
     start_idx = 0
     for i in range(peak_idx - 1, -1, -1):
-        if accel_g[i] < free_fall_threshold_g:
+        if accel_g[i] < freefall_threshold_g:
             start_idx = i
             break
 
+    # Expand right to freefall
     end_idx = n - 1
     for i in range(peak_idx + 1, n):
-        if accel_g[i] < free_fall_threshold_g:
+        if accel_g[i] < freefall_threshold_g:
             end_idx = i
             break
 

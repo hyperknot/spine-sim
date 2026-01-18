@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from spine_sim.calibration import YogCase, apply_calibration, calibrate_to_yoganandan
+from spine_sim.calibration import CalibrationCase, apply_calibration, calibrate_model
 from spine_sim.filters import cfc_filter
 from spine_sim.io import parse_csv_series, resample_to_uniform
 from spine_sim.model import SpineModel, initial_state_static, newmark_nonlinear
@@ -16,45 +16,48 @@ from spine_sim.plotting import (
     plot_displacement_colored_by_force,
     plot_displacements,
     plot_forces,
-    plot_gravity_tensioning,
+    plot_gravity_settling,
 )
-from spine_sim.range import find_first_hit_range
-from spine_sim.yoganandan_targets import YOG2021_T12L1_PEAKS_KN, get_case_name_from_filename
+from spine_sim.range import find_hit_range
+from spine_sim.calibration_targets import CALIBRATION_T12L1_PEAKS_KN, get_case_name_from_filename
 
 
 # Processing constants
 CFC = 75
 PEAK_THRESHOLD_G = 5.0
-FREE_FALL_THRESHOLD_G = -0.85
+FREEFALL_THRESHOLD_G = -0.85
 
-# Always simulate this long for drops (ms)
-DROP_SIM_DURATION_MS = 200.0
+# Style detection threshold (ms)
+STYLE_DURATION_THRESHOLD_MS = 300.0
 
-# Default masses JSON (can be overridden via config["model"]["masses_json"])
+# Always simulate this long (ms)
+SIM_DURATION_MS = 200.0
+
+# Default masses JSON
 DEFAULT_MASSES_JSON_PATH = Path(__file__).parent / "opensim" / "fullbody.json"
 
 # Drop inputs
 DROPS_DIR = Path(__file__).parent / "drops"
 DROPS_PATTERN = "*.csv"
 
-# Yoganandan calibration data directory
-YOGANANDAN_DIR = Path(__file__).parent / "yoganandan"
+# Calibration data directory
+CALIBRATION_DIR = Path(__file__).parent / "yoganandan"
 
-# Yoganandan force sign: -1 because their convention reports compression as negative,
-# but our model uses compression as positive
-YOGANANDAN_FORCE_SIGN = -1.0
+# Calibration force sign: -1 because Yoganandan reports compression as negative
+CALIBRATION_FORCE_SIGN = -1.0
 
 
 @dataclass
-class DropProcessingInfo:
+class ProcessingInfo:
     sample_rate_hz: float
     dt_s: float
     start_idx: int
     end_idx: int
-    duration_s: float
+    duration_ms: float
+    style: str  # "drop" or "flat"
     freefall_median_g: float | None
     bias_correction_g: float
-    style: str  # "drop" or "yoganandan"
+    bias_correction_applied: bool
 
 
 def load_masses_json(path: Path) -> dict:
@@ -102,39 +105,56 @@ def build_mass_map(masses: dict, arm_recruitment: float, helmet_mass: float) -> 
     }
 
 
-def _freefall_bias_correct(accel_g: np.ndarray) -> tuple[np.ndarray, float | None, float]:
+def _detect_style(duration_ms: float) -> str:
     """
-    Ensure the freefall baseline is -1 g as per README convention.
-    We estimate freefall from samples clearly below ~-0.5 g.
-    """
-    mask = accel_g < -0.5
-    if not np.any(mask):
-        return accel_g, None, 0.0
+    Simple duration-based style detection.
 
-    ff_med = float(np.median(accel_g[mask]))
-    bias = -1.0 - ff_med
-    return accel_g + bias, ff_med, bias
+    - drop-style (>= 300 ms): paragliding harness drop test standard
+      starts ~0g, drops to -1g freefall, positive peak, possible bounce
 
-
-def _baseline_zero_correct(accel_g: np.ndarray) -> tuple[np.ndarray, float]:
+    - flat-style (< 300 ms): excitor plate / calibration pulses
+      resting on ground (gravity-settled), starts ~0g, positive peak, ends ~0g
     """
-    For Yoganandan pulses: baseline is expected ~0 g inertial before pulse.
-    """
-    n = min(len(accel_g), 200)
-    base = float(np.median(accel_g[:n]))
-    return accel_g - base, base
-
-
-def _detect_input_style(time_s: np.ndarray, accel_g: np.ndarray) -> str:
-    """
-    User-requested rule:
-      - if duration < 300 ms AND there are no negative values => yoganandan style
-      - else => drop style
-    """
-    duration_ms = float((time_s[-1] - time_s[0]) * 1000.0) if time_s.size >= 2 else 0.0
-    if duration_ms < 300.0 and float(np.min(accel_g)) >= 0.0:
-        return "yoganandan"
+    if duration_ms < STYLE_DURATION_THRESHOLD_MS:
+        return "flat"
     return "drop"
+
+
+def _freefall_bias_correct(
+    accel_g: np.ndarray,
+    apply_correction: bool = True,
+) -> tuple[np.ndarray, float | None, float, bool]:
+    """
+    For drop-style: estimate freefall baseline from samples 50-100 and optionally correct to -1g.
+
+    Returns:
+        corrected_accel: acceleration array (possibly corrected)
+        freefall_median: median of samples 50-100 (or None if not enough samples)
+        bias: the correction that was (or would be) applied
+        applied: whether correction was actually applied
+    """
+    # Use samples 50-100 for freefall estimation
+    if len(accel_g) < 100:
+        # Not enough samples, try what we have
+        if len(accel_g) > 50:
+            samples = accel_g[50:]
+        else:
+            return accel_g, None, 0.0, False
+    else:
+        samples = accel_g[50:100]
+
+    ff_median = float(np.median(samples))
+    bias = -1.0 - ff_median
+
+    print(f"    DEBUG freefall: samples[50:100] median = {ff_median:.4f} g")
+    print(f"    DEBUG freefall: bias to reach -1g = {bias:.4f} g")
+
+    if apply_correction:
+        print(f"    DEBUG freefall: applying correction")
+        return accel_g + bias, ff_median, bias, True
+    else:
+        print(f"    DEBUG freefall: correction DISABLED, not applied")
+        return accel_g, ff_median, bias, False
 
 
 def build_spine_model(mass_map: dict, nonlinear_cfg: dict | None = None) -> SpineModel:
@@ -187,7 +207,7 @@ def build_spine_model(mass_map: dict, nonlinear_cfg: dict | None = None) -> Spin
         dtype=float,
     )
 
-    # Raj 2019 axial stiffnesses (N/m) used as equilibrium stiffness baseline.
+    # Raj 2019 axial stiffnesses (N/m)
     k = {
         "head-c1": 0.55e6,
         "c1-c2": 0.3e6,
@@ -219,7 +239,6 @@ def build_spine_model(mass_map: dict, nonlinear_cfg: dict | None = None) -> Spin
     cerv_keys = ["head-c1", "c1-c2", "c2-c3", "c3-c4", "c4-c5", "c5-c6", "c6-c7", "c7-t1"]
     k_cerv_eq = 1.0 / sum(1.0 / k[key] for key in cerv_keys)
 
-    # Kelvin damping baseline (kept modest because Maxwell branches provide rate effects)
     c_base = float(nonlinear_cfg.get("c_base_ns_per_m", 1200.0))
 
     def c_disc(name: str) -> float:
@@ -251,7 +270,7 @@ def build_spine_model(mass_map: dict, nonlinear_cfg: dict | None = None) -> Spin
 
     k_elem = np.array(
         [
-            8.8425e4,  # buttocks equilibrium baseline (will stiffen nonlinearly + Maxwell)
+            8.8425e4,  # buttocks
             k["l5-s1"],
             k["l4-l5"],
             k["l3-l4"],
@@ -276,7 +295,7 @@ def build_spine_model(mass_map: dict, nonlinear_cfg: dict | None = None) -> Spin
 
     c_elem = np.array(
         [
-            1700.0,  # buttocks Kelvin
+            1700.0,  # buttocks
             c_disc("l5-s1"),
             c_disc("l4-l5"),
             c_disc("l3-l4"),
@@ -299,10 +318,11 @@ def build_spine_model(mass_map: dict, nonlinear_cfg: dict | None = None) -> Spin
         dtype=float,
     )
 
-    # --- Nonlinear equilibrium spring settings ---
+    # ---------------------------------------------------------------------
+    # Nonlinear / contact-like behavior parameters (existing)
+    # ---------------------------------------------------------------------
     disc_ref_mm = float(nonlinear_cfg.get("disc_ref_compression_mm", 2.0))
     disc_kmult = float(nonlinear_cfg.get("disc_k_mult_at_ref", 8.0))
-
     butt_ref_mm = float(nonlinear_cfg.get("buttocks_ref_compression_mm", 25.0))
     butt_kmult = float(nonlinear_cfg.get("buttocks_k_mult_at_ref", 20.0))
     butt_gap_mm = float(nonlinear_cfg.get("buttocks_gap_mm", 0.0))
@@ -310,7 +330,6 @@ def build_spine_model(mass_map: dict, nonlinear_cfg: dict | None = None) -> Spin
     compression_ref_m = np.zeros_like(k_elem, dtype=float)
     compression_k_mult = np.ones_like(k_elem, dtype=float)
     tension_k_mult = np.ones_like(k_elem, dtype=float)
-
     compression_only = np.zeros_like(k_elem, dtype=bool)
     damping_compression_only = np.zeros_like(k_elem, dtype=bool)
     gap_m = np.zeros_like(k_elem, dtype=float)
@@ -327,29 +346,116 @@ def build_spine_model(mass_map: dict, nonlinear_cfg: dict | None = None) -> Spin
     compression_k_mult[1:] = disc_kmult
     tension_k_mult[1:] = 1.0
 
-    # --- Maxwell branches (rate dependence) ---
-    # Defaults target the 50–200 ms regime: one branch ~10 ms, one branch ~120 ms.
-    mx_k_ratios = nonlinear_cfg.get("maxwell_k_ratios", [1.0, 0.5])
-    mx_tau_ms = nonlinear_cfg.get("maxwell_tau_ms", [10.0, 120.0])
+    # ---------------------------------------------------------------------
+    # ZWT (Liu 2024) option
+    # ---------------------------------------------------------------------
+    zwt_cfg = nonlinear_cfg.get("zwt", {}) if isinstance(nonlinear_cfg.get("zwt", {}), dict) else {}
+    zwt_enabled = bool(zwt_cfg.get("enabled", False))
 
-    mx_k_ratios = [float(x) for x in mx_k_ratios]
-    mx_tau_ms = [float(x) for x in mx_tau_ms]
-    B = max(len(mx_k_ratios), len(mx_tau_ms))
-    mx_k_ratios = (mx_k_ratios + [0.0] * B)[:B]
-    mx_tau_ms = (mx_tau_ms + [0.0] * B)[:B]
+    poly_k2 = None
+    poly_k3 = None
 
-    maxwell_k = np.zeros((len(k_elem), B), dtype=float)
-    maxwell_tau_s = np.zeros((len(k_elem), B), dtype=float)
+    if zwt_enabled:
+        # Parameters from Liu 2024 Table 3 (units are MPa, s, microseconds).
+        # NOTE: These are for sheep lumbar discs under their protocol; use as a starting point only.
+        E0_pa = float(zwt_cfg.get("E0_MPa", 3.0)) * 1e6
+        E1_pa = float(zwt_cfg.get("E1_MPa", 9.15)) * 1e6
+        E2_pa = float(zwt_cfg.get("E2_MPa", 1.72)) * 1e6
+        alpha_pa = float(zwt_cfg.get("alpha_MPa", 116.80)) * 1e6
+        beta_pa = float(zwt_cfg.get("beta_MPa", 110.30)) * 1e6
+        theta1_s = float(zwt_cfg.get("theta1_s", 197.35))
+        theta2_s = float(zwt_cfg.get("theta2_us", 0.53)) * 1e-6
 
-    # Apply to all elements as scaled-by-equilibrium baseline
-    for e in range(len(k_elem)):
-        for b in range(B):
-            maxwell_k[e, b] = k_elem[e] * mx_k_ratios[b]
-            maxwell_tau_s[e, b] = mx_tau_ms[b] / 1000.0
+        disc_height_m = float(zwt_cfg.get("disc_height_mm", 10.0)) / 1000.0
+        if disc_height_m <= 0.0:
+            raise ValueError("nonlinear.zwt.disc_height_mm must be > 0")
 
-    maxwell_compression_only = np.zeros(len(k_elem), dtype=bool)
-    # For impact modeling we keep Maxwell compression-only everywhere to avoid non-physical tension during rebound
-    maxwell_compression_only[:] = True
+        # How to interpret your existing k_elem values vs ZWT moduli:
+        # - "instantaneous" (default): treat Raj k_elem as ~ (E0+E1) stiffness for short events,
+        #   split into equilibrium spring k0 and a Maxwell-1 branch k1 so that k0+k1 ~= original.
+        # - "equilibrium": treat Raj k_elem as E0 stiffness and add Maxwell stiffness on top (often increases stiffness).
+        k_reference = str(zwt_cfg.get("k_reference", "instantaneous")).lower()
+        if k_reference not in ["instantaneous", "equilibrium"]:
+            raise ValueError("nonlinear.zwt.k_reference must be 'instantaneous' or 'equilibrium'")
+
+        poly_k2 = np.zeros_like(k_elem, dtype=float)
+        poly_k3 = np.zeros_like(k_elem, dtype=float)
+
+        # 2 Maxwell branches per ZWT
+        B = 2
+        maxwell_k = np.zeros((len(k_elem), B), dtype=float)
+        maxwell_tau_s = np.zeros((len(k_elem), B), dtype=float)
+
+        # Keep buttocks linear/damped as-is; set its Maxwell to zero.
+        maxwell_k[0, :] = 0.0
+        maxwell_tau_s[0, :] = 0.0
+
+        # Apply ZWT to spinal disc elements, but skip the final "T1-HEAD" equivalent element by default.
+        last_elem_idx = len(k_elem) - 1
+
+        for e in range(1, len(k_elem)):
+            if e == last_elem_idx:
+                # Cervical equivalent element: leave as your legacy model.
+                maxwell_k[e, :] = 0.0
+                maxwell_tau_s[e, :] = 0.0
+                continue
+
+            k_ref = float(k_elem[e])
+
+            if k_reference == "instantaneous":
+                # Split so k0 + k1 ~= k_ref based on E0 and E1.
+                denom = (E0_pa + E1_pa)
+                if denom <= 0.0:
+                    raise ValueError("Invalid ZWT E0+E1 (must be > 0).")
+
+                k0 = k_ref * (E0_pa / denom)   # equilibrium spring portion
+                k1 = k_ref * (E1_pa / denom)   # Maxwell-1 spring portion
+                k2_mx = k_ref * (E2_pa / denom)  # Maxwell-2 portion (usually tiny for Liu 2024 params)
+
+                k_elem[e] = k0
+                maxwell_k[e, 0] = k1
+                maxwell_k[e, 1] = k2_mx
+            else:
+                # Treat k_elem as k0 and add Maxwell stiffness according to ratios E1/E0, E2/E0.
+                k0 = k_ref
+                k_elem[e] = k0
+                maxwell_k[e, 0] = k0 * (E1_pa / E0_pa)
+                maxwell_k[e, 1] = k0 * (E2_pa / E0_pa)
+
+            maxwell_tau_s[e, 0] = theta1_s
+            maxwell_tau_s[e, 1] = theta2_s
+
+            # Nonlinear spring: sigma = E0*eps + alpha*eps^2 + beta*eps^3
+            # Map to force vs displacement using only disc height L:
+            # F = k0*x + k2*x^2 + k3*x^3, where:
+            #   k2 = k0*(alpha/E0)/L
+            #   k3 = k0*(beta/E0)/L^2
+            poly_k2[e] = k0 * (alpha_pa / E0_pa) / disc_height_m
+            poly_k3[e] = k0 * (beta_pa / E0_pa) / (disc_height_m * disc_height_m)
+
+        # In pure ZWT there is no extra Kelvin-Voigt damper in parallel with the spring network.
+        # Keep buttocks damper; remove disc dampers.
+        c_elem[1:] = 0.0
+    else:
+        # Legacy Maxwell branches from config
+        mx_k_ratios = nonlinear_cfg.get("maxwell_k_ratios", [1.0, 0.5])
+        mx_tau_ms = nonlinear_cfg.get("maxwell_tau_ms", [10.0, 120.0])
+
+        mx_k_ratios = [float(x) for x in mx_k_ratios]
+        mx_tau_ms = [float(x) for x in mx_tau_ms]
+        B = max(len(mx_k_ratios), len(mx_tau_ms))
+        mx_k_ratios = (mx_k_ratios + [0.0] * B)[:B]
+        mx_tau_ms = (mx_tau_ms + [0.0] * B)[:B]
+
+        maxwell_k = np.zeros((len(k_elem), B), dtype=float)
+        maxwell_tau_s = np.zeros((len(k_elem), B), dtype=float)
+
+        for e in range(len(k_elem)):
+            for b in range(B):
+                maxwell_k[e, b] = k_elem[e] * mx_k_ratios[b]
+                maxwell_tau_s[e, b] = mx_tau_ms[b] / 1000.0
+
+    maxwell_compression_only = np.ones(len(k_elem), dtype=bool)
 
     return SpineModel(
         node_names=node_names,
@@ -366,19 +472,21 @@ def build_spine_model(mass_map: dict, nonlinear_cfg: dict | None = None) -> Spin
         maxwell_k=maxwell_k,
         maxwell_tau_s=maxwell_tau_s,
         maxwell_compression_only=maxwell_compression_only,
+        poly_k2=poly_k2,
+        poly_k3=poly_k3,
     )
 
 
-def load_yog_cases(cases_config: list[dict]) -> list[YogCase]:
+def load_calibration_cases(cases_config: list[dict]) -> list[CalibrationCase]:
     cases = []
     for c in cases_config:
         accel_series = parse_csv_series(
-            YOGANANDAN_DIR / c["accel_csv"],
+            CALIBRATION_DIR / c["accel_csv"],
             time_candidates=["time", "time0", "t"],
             value_candidates=["accel", "acceleration"],
         )
         force_series = parse_csv_series(
-            YOGANANDAN_DIR / c["force_csv"],
+            CALIBRATION_DIR / c["force_csv"],
             time_candidates=["time", "time0", "t"],
             value_candidates=["force", "spinal", "load"],
         )
@@ -386,13 +494,12 @@ def load_yog_cases(cases_config: list[dict]) -> list[YogCase]:
         accel_series, _ = resample_to_uniform(accel_series)
         force_series, _ = resample_to_uniform(force_series)
 
+        # No baseline correction for calibration data - trust as-is
         accel_g = np.asarray(accel_series.values, dtype=float)
-        accel_g, _baseline = _baseline_zero_correct(accel_g)
-
-        force_n = np.asarray(force_series.values, dtype=float) * 1000.0 * YOGANANDAN_FORCE_SIGN
+        force_n = np.asarray(force_series.values, dtype=float) * 1000.0 * CALIBRATION_FORCE_SIGN
 
         cases.append(
-            YogCase(
+            CalibrationCase(
                 name=c["name"],
                 time_s=np.asarray(accel_series.time_s, dtype=float),
                 accel_g=accel_g,
@@ -403,14 +510,24 @@ def load_yog_cases(cases_config: list[dict]) -> list[YogCase]:
     return cases
 
 
-def process_drop_csv_fixed_duration(
+def process_input_file(
     path: Path,
     *,
     cfc: float,
-    peak_g: float,
-    freefall_g: float,
-    duration_ms: float,
-) -> tuple[np.ndarray, np.ndarray, DropProcessingInfo]:
+    peak_threshold_g: float,
+    freefall_threshold_g: float,
+    sim_duration_ms: float,
+    drop_baseline_correction: bool = True,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, ProcessingInfo]:
+    """
+    Process input CSV file and return time, filtered accel, raw accel, and info.
+
+    Returns:
+        t_s: time array (seconds)
+        a_filtered_g: CFC-filtered acceleration (g)
+        a_raw_g: raw acceleration before CFC filtering (g)
+        info: processing metadata
+    """
     series = parse_csv_series(
         path,
         time_candidates=["time", "time0", "t"],
@@ -419,90 +536,95 @@ def process_drop_csv_fixed_duration(
     series, sample_rate = resample_to_uniform(series)
     dt = 1.0 / sample_rate
 
-    accel_raw = series.values
-    accel_filtered = np.asarray(cfc_filter(accel_raw, sample_rate, cfc), dtype=float)
-
+    accel_raw = np.asarray(series.values, dtype=float)
+    accel_filtered = np.asarray(cfc_filter(accel_raw.tolist(), sample_rate, cfc), dtype=float)
     t_all = np.asarray(series.time_s, dtype=float)
 
-    # DEBUG: trace min values at each stage
-    duration_ms_raw = float((t_all[-1] - t_all[0]) * 1000.0) if t_all.size >= 2 else 0.0
-    print(f"  DEBUG: raw min={np.min(accel_raw):.4f}, max={np.max(accel_raw):.4f}")
-    print(f"  DEBUG: filtered min={np.min(accel_filtered):.4f}, max={np.max(accel_filtered):.4f}")
-    print(f"  DEBUG: duration={duration_ms_raw:.2f} ms")
+    # Calculate total duration for style detection
+    total_duration_ms = float((t_all[-1] - t_all[0]) * 1000.0) if t_all.size >= 2 else 0.0
+    style = _detect_style(total_duration_ms)
 
-    style = _detect_input_style(t_all, accel_filtered)
+    print(f"    DEBUG: total_duration = {total_duration_ms:.1f} ms -> style = {style}")
+    print(f"    DEBUG: raw min={np.min(accel_raw):.4f} g, max={np.max(accel_raw):.4f} g")
+    print(f"    DEBUG: filtered min={np.min(accel_filtered):.4f} g, max={np.max(accel_filtered):.4f} g")
 
-    if style == "yoganandan":
-        # No hit extraction; baseline ~0 g.
+    if style == "flat":
+        # Flat-style: use entire signal, NO baseline correction - trust as-is
         start_idx = 0
-        end_idx = min(len(t_all) - 1, int(round((duration_ms / 1000.0) / dt)))
-        t_seg = t_all[start_idx : end_idx + 1] - t_all[start_idx]
-        a_seg = accel_filtered[start_idx : end_idx + 1]
+        end_idx = len(t_all) - 1
 
-        print(f"  DEBUG yog: a_seg before baseline_zero_correct min={np.min(a_seg):.4f}, max={np.max(a_seg):.4f}, len={len(a_seg)}")
-        a_seg, _base0 = _baseline_zero_correct(a_seg)
-        print(f"  DEBUG yog: baseline correction applied: {_base0:.4f}")
-        print(f"  DEBUG yog: a_seg after baseline_zero_correct min={np.min(a_seg):.4f}, max={np.max(a_seg):.4f}")
+        t_seg = t_all - t_all[0]
+        a_seg = accel_filtered.copy()
+        a_raw_seg = accel_raw.copy()
 
-        desired_n = int(round((duration_ms / 1000.0) / dt)) + 1
+        # Extend to sim_duration if needed
+        desired_n = int(round((sim_duration_ms / 1000.0) / dt)) + 1
         if len(t_seg) < desired_n:
             pad_n = desired_n - len(t_seg)
             t_pad = t_seg[-1] + dt * (np.arange(pad_n) + 1)
-            a_pad = 0.0 * np.ones(pad_n, dtype=float)
+            a_pad = np.zeros(pad_n, dtype=float)
             t_seg = np.concatenate([t_seg, t_pad])
             a_seg = np.concatenate([a_seg, a_pad])
-            print(f"  DEBUG yog: after padding min={np.min(a_seg):.4f}, max={np.max(a_seg):.4f}, len={len(a_seg)}")
+            a_raw_seg = np.concatenate([a_raw_seg, a_pad])
 
-        info = DropProcessingInfo(
+        info = ProcessingInfo(
             sample_rate_hz=float(sample_rate),
             dt_s=float(dt),
             start_idx=int(start_idx),
             end_idx=int(end_idx),
-            duration_s=float(t_seg[-1] - t_seg[0]),
+            duration_ms=float(t_seg[-1] * 1000.0),
+            style="flat",
             freefall_median_g=None,
             bias_correction_g=0.0,
-            style="yoganandan",
+            bias_correction_applied=False,
         )
-        return t_seg, a_seg, info
+        return t_seg, a_seg, a_raw_seg, info
 
-    # --- drop-style behavior (as before) ---
-    hit = find_first_hit_range(
+    # Drop-style: find hit range
+    hit = find_hit_range(
         accel_filtered.tolist(),
-        peak_threshold_g=peak_g,
-        free_fall_threshold_g=freefall_g,
+        peak_threshold_g=peak_threshold_g,
+        freefall_threshold_g=freefall_threshold_g,
     )
 
-    if not hit:
-        start_idx = 0
-        end_idx = min(len(t_all) - 1, int(round((duration_ms / 1000.0) / dt)))
-    else:
+    if hit:
         start_idx = hit.start_idx
-        end_idx = min(len(t_all) - 1, start_idx + int(round((duration_ms / 1000.0) / dt)))
+        end_idx = min(len(t_all) - 1, start_idx + int(round((sim_duration_ms / 1000.0) / dt)))
+    else:
+        start_idx = 0
+        end_idx = min(len(t_all) - 1, int(round((sim_duration_ms / 1000.0) / dt)))
 
     t_seg = t_all[start_idx : end_idx + 1] - t_all[start_idx]
     a_seg = accel_filtered[start_idx : end_idx + 1]
+    a_raw_seg = accel_raw[start_idx : end_idx + 1]
 
-    a_seg, ff_med, bias = _freefall_bias_correct(a_seg)
+    # Bias correct to freefall = -1g (using samples 50-100)
+    a_seg, ff_median, bias, applied = _freefall_bias_correct(a_seg, apply_correction=drop_baseline_correction)
+    if applied:
+        a_raw_seg = a_raw_seg + bias
 
-    desired_n = int(round((duration_ms / 1000.0) / dt)) + 1
+    # Extend to sim_duration if needed
+    desired_n = int(round((sim_duration_ms / 1000.0) / dt)) + 1
     if len(t_seg) < desired_n:
         pad_n = desired_n - len(t_seg)
         t_pad = t_seg[-1] + dt * (np.arange(pad_n) + 1)
         a_pad = -1.0 * np.ones(pad_n, dtype=float)  # freefall
         t_seg = np.concatenate([t_seg, t_pad])
         a_seg = np.concatenate([a_seg, a_pad])
+        a_raw_seg = np.concatenate([a_raw_seg, a_pad])
 
-    info = DropProcessingInfo(
+    info = ProcessingInfo(
         sample_rate_hz=float(sample_rate),
         dt_s=float(dt),
         start_idx=int(start_idx),
         end_idx=int(end_idx),
-        duration_s=float(t_seg[-1] - t_seg[0]),
-        freefall_median_g=ff_med,
-        bias_correction_g=float(bias),
+        duration_ms=float(t_seg[-1] * 1000.0),
         style="drop",
+        freefall_median_g=ff_median,
+        bias_correction_g=float(bias),
+        bias_correction_applied=applied,
     )
-    return t_seg, a_seg, info
+    return t_seg, a_seg, a_raw_seg, info
 
 
 def write_timeseries_csv(
@@ -561,11 +683,14 @@ def main() -> None:
     out_dir = Path(config["output_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Calibration (waveform-based; optional)
-    calib_cfg = config.get("yoganandan")
-    if calib_cfg and "cases" in calib_cfg:
-        cases = load_yog_cases(calib_cfg["cases"])
-        calib = calibrate_to_yoganandan(model, cases, t12_elem_idx)
+    # Calibration (only if explicitly enabled)
+    calib_cfg = config.get("calibration", {})
+    run_calibration = calib_cfg.get("run", False)
+
+    if run_calibration and "cases" in calib_cfg:
+        print("Running calibration...")
+        cases = load_calibration_cases(calib_cfg["cases"])
+        calib = calibrate_model(model, cases, t12_elem_idx)
 
         (out_dir / "calibration_result.json").write_text(
             json.dumps(
@@ -574,7 +699,6 @@ def main() -> None:
                     "success": calib.success,
                     "cost": calib.cost,
                     "residual_norm": calib.residual_norm,
-                    "note": "Viscoelastic model: scalars apply to equilibrium k/c and Maxwell k (not tau).",
                 },
                 indent=2,
             )
@@ -587,34 +711,31 @@ def main() -> None:
         print(f'  s_c_spine = {calib.scales["s_c_spine"]:.3f}')
         print(f'  s_k_butt  = {calib.scales["s_k_butt"]:.3f}')
         print(f'  s_c_butt  = {calib.scales["s_c_butt"]:.3f}')
-        print("  Nonlinear/visco settings:")
-        print(f'    disc_ref_compression_mm = {nonlinear_cfg.get("disc_ref_compression_mm", 2.0)}')
-        print(f'    disc_k_mult_at_ref      = {nonlinear_cfg.get("disc_k_mult_at_ref", 8.0)}')
-        print(f'    butt_ref_compression_mm = {nonlinear_cfg.get("buttocks_ref_compression_mm", 25.0)}')
-        print(f'    butt_k_mult_at_ref      = {nonlinear_cfg.get("buttocks_k_mult_at_ref", 20.0)}')
-        print(f'    maxwell_k_ratios         = {nonlinear_cfg.get("maxwell_k_ratios", [1.0, 0.5])}')
-        print(f'    maxwell_tau_ms           = {nonlinear_cfg.get("maxwell_tau_ms", [10.0, 120.0])}')
+    else:
+        print("Calibration skipped (set calibration.run = true to enable)")
+
+    # Processing options
+    drop_baseline_correction = config.get("drop_baseline_correction", True)
+    print(f"Drop baseline correction: {'enabled' if drop_baseline_correction else 'disabled'}")
 
     drop_files = sorted(DROPS_DIR.glob(DROPS_PATTERN))
     summary = []
 
-    # gravity-settling parameters for yoganandan-style inputs
-    settle_ms = float(config.get("yoganandan_settle_ms", 150.0))
+    settle_ms = float(config.get("gravity_settle_ms", 150.0))
 
     for fpath in drop_files:
-        print(f"Processing {fpath.name}...")
+        print(f"\nProcessing {fpath.name}...")
 
-        t, a_base_g, info = process_drop_csv_fixed_duration(
+        t, a_filtered_g, a_raw_g, info = process_input_file(
             fpath,
             cfc=CFC,
-            peak_g=PEAK_THRESHOLD_G,
-            freefall_g=FREE_FALL_THRESHOLD_G,
-            duration_ms=DROP_SIM_DURATION_MS,
+            peak_threshold_g=PEAK_THRESHOLD_G,
+            freefall_threshold_g=FREEFALL_THRESHOLD_G,
+            sim_duration_ms=SIM_DURATION_MS,
+            drop_baseline_correction=drop_baseline_correction,
         )
 
-        # Initial conditions:
-        # - drop: start free (y=v=0) because base has freefall history (-1 g).
-        # - yoganandan: run a gravity-settle stage (base accel = 0) and use its final state.
+        # Initial conditions
         y0 = np.zeros(model.size(), dtype=float)
         v0 = np.zeros(model.size(), dtype=float)
         s0 = np.zeros((model.n_elems(), model.n_maxwell()), dtype=float)
@@ -624,7 +745,8 @@ def main() -> None:
             shutil.rmtree(run_dir)
         run_dir.mkdir(parents=True)
 
-        if info.style == "yoganandan":
+        # For flat-style: run gravity settling first
+        if info.style == "flat":
             dt = info.dt_s
             n_settle = int(round((settle_ms / 1000.0) / dt)) + 1
             t_settle = dt * np.arange(n_settle)
@@ -632,18 +754,18 @@ def main() -> None:
 
             sim_settle = newmark_nonlinear(model, t_settle, a_settle, y0, v0, s0)
 
-            plot_gravity_tensioning(
+            plot_gravity_settling(
                 sim_settle.time_s,
                 sim_settle.y,
                 model.node_names,
-                run_dir / "gravity_tensioning.png",
+                run_dir / "gravity_settling.png",
             )
 
             y0 = sim_settle.y[-1].copy()
             v0 = sim_settle.v[-1].copy()
             s0 = sim_settle.maxwell_state_n[-1].copy()
 
-        sim = newmark_nonlinear(model, t, a_base_g, y0, v0, s0)
+        sim = newmark_nonlinear(model, t, a_filtered_g, y0, v0, s0)
         forces = sim.element_forces_n
 
         f_t12 = forces[:, t12_elem_idx]
@@ -656,8 +778,8 @@ def main() -> None:
         max_pelvis_compression_mm = -float(np.min(sim.y[:, pelvis_idx]) * 1000.0)
         max_spine_shortening_mm = max_head_compression_mm - max_pelvis_compression_mm
 
-        peak_base_g = float(np.max(a_base_g))
-        min_base_g = float(np.min(a_base_g))
+        peak_base_g = float(np.max(a_filtered_g))
+        min_base_g = float(np.min(a_filtered_g))
         peak_t12_kN = float(np.max(f_t12) / 1000.0)
         peak_butt_kN = float(np.max(f_butt) / 1000.0)
 
@@ -676,6 +798,7 @@ def main() -> None:
         plot_displacements(
             sim.time_s,
             sim.y,
+            a_filtered_g,
             model.node_names,
             run_dir / "displacements.png",
             heights_from_model=heights_from_model,
@@ -684,6 +807,7 @@ def main() -> None:
         plot_forces(
             sim.time_s,
             forces,
+            a_filtered_g,
             model.element_names,
             run_dir / "forces.png",
             highlight="T12-L1",
@@ -692,6 +816,7 @@ def main() -> None:
             sim.time_s,
             sim.y,
             forces,
+            a_filtered_g,
             model.node_names,
             model.element_names,
             run_dir / "mixed.png",
@@ -699,7 +824,7 @@ def main() -> None:
             reference_frame="pelvis",
         )
 
-        # Element compression metrics (max compression in mm)
+        # Element compression metrics
         elem_max_comp_mm: dict[str, float] = {}
         for e_idx, ename in enumerate(model.element_names):
             if e_idx == 0:
@@ -710,62 +835,40 @@ def main() -> None:
                 comp = np.maximum(-(sim.y[:, upper] - sim.y[:, lower] + model.gap_m[e_idx]), 0.0)
             elem_max_comp_mm[ename] = float(np.max(comp) * 1000.0)
 
-        print("  Input/base:")
-        print(f"    style: {info.style}")
-        print(f"    sample_rate: {info.sample_rate_hz:.1f} Hz, dt: {info.dt_s*1000.0:.3f} ms")
-        print(f"    sim duration: {DROP_SIM_DURATION_MS:.0f} ms (forced)")
-        print(f"    base accel peak: {peak_base_g:.2f} g, min: {min_base_g:.2f} g")
+        print(f"  Style: {info.style}")
+        print(f"  Sample rate: {info.sample_rate_hz:.1f} Hz, dt: {info.dt_s*1000.0:.3f} ms")
+        if info.style == "drop":
+            print(f"  Baseline correction: {'applied' if info.bias_correction_applied else 'not applied'} (bias={info.bias_correction_g:.4f} g)")
+        print(f"  Base accel: peak={peak_base_g:.2f} g, min={min_base_g:.2f} g")
+        print(f"  Peak buttocks: {peak_butt_kN:.2f} kN")
+        print(f"  Peak T12-L1: {peak_t12_kN:.2f} kN @ {float(sim.time_s[np.argmax(f_t12)]*1000.0):.1f} ms")
 
-        print("  Forces:")
-        print(f"    Peak buttocks: {peak_butt_kN:.2f} kN")
-        print(f"    Peak T12-L1:   {peak_t12_kN:.2f} kN @ {float(sim.time_s[np.argmax(f_t12)]*1000.0):.1f} ms")
-
-        # If filename matches a Yoganandan case, print reference peak
         case_name = get_case_name_from_filename(fpath.stem)
-        if case_name and case_name in YOG2021_T12L1_PEAKS_KN:
-            ref = YOG2021_T12L1_PEAKS_KN[case_name]
-            print(f"    Yoganandan 2021 ref (T12-L1 peak): {ref:.2f} kN (Table 2)")
+        if case_name and case_name in CALIBRATION_T12L1_PEAKS_KN:
+            ref = CALIBRATION_T12L1_PEAKS_KN[case_name]
+            print(f"  Reference (Yoganandan 2021): {ref:.2f} kN")
 
-        print("  Displacements:")
-        print(f"    Head compression:  {max_head_compression_mm:.1f} mm")
-        print(f"    Pelvis compression:{max_pelvis_compression_mm:.1f} mm")
-        print(f"    Spine shortening:  {max_spine_shortening_mm:.1f} mm")
-
-        top_comp = sorted(elem_max_comp_mm.items(), key=lambda kv: kv[1], reverse=True)[:5]
-        print("  Max element compressions (top 5):")
-        for name, mm in top_comp:
-            print(f"    {name:>8s}: {mm:7.2f} mm")
+        print(f"  Spine shortening: {max_spine_shortening_mm:.1f} mm")
 
         summary.append(
             {
                 "file": fpath.name,
-                "processing": {
-                    "style": info.style,
-                    "sample_rate_hz": info.sample_rate_hz,
-                    "dt_s": info.dt_s,
-                    "start_idx": info.start_idx,
-                    "end_idx": info.end_idx,
-                    "freefall_median_g": info.freefall_median_g,
-                    "bias_correction_g": info.bias_correction_g,
-                    "sim_duration_ms": DROP_SIM_DURATION_MS,
-                },
-                "base_accel": {
-                    "peak_g": peak_base_g,
-                    "min_g": min_base_g,
-                },
-                "peak_forces_kN": {
-                    "buttocks": peak_butt_kN,
-                    "T12-L1": peak_t12_kN,
-                },
+                "style": info.style,
+                "sample_rate_hz": info.sample_rate_hz,
+                "baseline_correction_applied": info.bias_correction_applied,
+                "baseline_correction_g": info.bias_correction_g,
+                "base_accel_peak_g": peak_base_g,
+                "base_accel_min_g": min_base_g,
+                "peak_buttocks_kN": peak_butt_kN,
+                "peak_T12L1_kN": peak_t12_kN,
                 "time_to_peak_ms": float(sim.time_s[np.argmax(f_t12)] * 1000.0),
-                "max_head_compression_mm": max_head_compression_mm,
-                "max_pelvis_compression_mm": max_pelvis_compression_mm,
                 "max_spine_shortening_mm": max_spine_shortening_mm,
                 "max_element_compression_mm": elem_max_comp_mm,
             }
         )
 
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+    print(f"\nResults written to {out_dir}/")
 
 
 if __name__ == "__main__":

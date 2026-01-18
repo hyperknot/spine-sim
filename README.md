@@ -13,7 +13,7 @@ Primary output:
 - Also export full time histories for:
   - node displacements (pelvis, L5…T12…T1, head),
   - element/junction forces (buttocks, L5–S1 … T12–L1 … T1–Head),
-  - to support “wave up the spine” visualization in 2D charts.
+  - to support "wave up the spine" visualization in 2D charts.
 
 We explicitly do **not** simulate rotations, bending, wedge injury, shear, etc. (These are real mechanisms but outside the 1D scope.)
 
@@ -45,7 +45,7 @@ We do **not** use OpenSim muscles/joints for dynamics in the shock simulation.
 ### 2.2 Yoganandan 2021 (FE under caudo-cephalad loading)
 We use Yoganandan 2021 as the **human reference** for calibration:
 - Input: seat/base acceleration pulses (duration 50–200 ms, 11–46 g)
-- Output: **thoracolumbar disc “spinal forces”** (compressive plotted negative in their figures)
+- Output: **thoracolumbar disc "spinal forces"** (compressive plotted negative in their figures)
 - Key qualitative trend: shorter rise time/duration → larger transmitted thoracolumbar force.
 
 We **digitized** the 5 acceleration pulses and 5 force time histories and use them as calibration targets.
@@ -86,7 +86,7 @@ Decision:
 - We treat measured drop-test acceleration as a **base excitation** signal for the human model, i.e.:
   - `a_base(t) := a_measured(t)` during the extracted contact window.
 
-### 3.3 Important consequence (“use data as-is” philosophy)
+### 3.3 Important consequence ("use data as-is" philosophy)
 We explicitly decided:
 - **DO NOT model the protector/harness response** using springs/foam models.
 - Protectors differ (Koroyd, airbag, vented airbag, foam, etc.).
@@ -111,7 +111,7 @@ Real harness posture is about 22.5° reclined, but we decided:
 - **Assume upright axial loading** for simplicity.
 - No cosine projection; treat the axis as aligned with spine.
 
-This makes results an “axial compression estimator,” not a bending/shear injury estimator.
+This makes results an "axial compression estimator," not a bending/shear injury estimator.
 
 ### 4.2 Gravity convention
 We decided to include gravity consistently and rely on the fact that the data shows:
@@ -128,24 +128,43 @@ Decision:
 
 ---
 
-## 5) Event window extraction from drop tests
+## 5) Input styles and detection
 
-We want only the **primary contact event**, not bounces.
+There are **two input styles** determined by signal duration:
 
-We use a variant of the TS logic:
-- Find first significant peak above threshold (default 5 g).
-- Expand left and right until freefall baseline is reached.
+### 5.1 Drop-style (duration ≥ 300 ms)
 
-Implementation decision:
-- Use CFC-filtered acceleration (CFC 75).
-- Detect:
-  - first peak region > 5 g,
-  - walk left to first sample below -0.85 g,
-  - walk right to first sample below -0.85 g.
-- Include that segment only.
+Paragliding harness drop test standard:
+- Starts with ~0 g (idle/rest)
+- Drops to ~-1 g (freefall)
+- Positive peak during impact
+- Possible bounce
 
-Rationale:
-- This yields a segment that begins/ends close to freefall baseline, removing bounce complexity.
+Processing:
+- Find the first significant peak (> 5 g threshold)
+- Expand left/right to freefall boundaries (-0.85 g)
+- Bias-correct so freefall baseline equals -1 g
+- Initial state: unloaded (y=0, v=0)
+
+### 5.2 Flat-style (duration < 300 ms)
+
+Excitor plate / Yoganandan-style calibration pulses:
+- Subject is resting on ground, gravity-settled/pretensioned
+- Starts at ~0 g
+- Positive peak
+- Returns to ~0 g
+
+Processing:
+- Use entire signal (no hit extraction)
+- Baseline-correct initial samples to 0 g
+- Run gravity-settling phase before applying pulse
+- Initial state: static equilibrium under gravity
+
+### 5.3 Detection rule
+
+**Simple duration-based detection:**
+- Total signal duration < 300 ms → **flat-style**
+- Total signal duration ≥ 300 ms → **drop-style**
 
 ---
 
@@ -176,7 +195,7 @@ It is the internal through-force in the T12–L1 axial element.
 
 ### 7.1 We use OpenSim male model masses
 Decision:
-- Use OpenSim’s male thoracolumbar full-body model as mass reference.
+- Use OpenSim's male thoracolumbar full-body model as mass reference.
 - Extract masses of bodies; map them to nodes in our chain.
 
 ### 7.2 Head/helmet
@@ -214,13 +233,13 @@ Decision:
 We lump cervical stiffness into a single equivalent series stiffness between T1 and head.
 
 Damping baseline:
-- use a simple constant per disc, with increased damping in thoracolumbar region as in Raj’s description (e.g., 5× in T10–L5 region), then calibrate scalars.
+- use a simple constant per disc, with increased damping in thoracolumbar region as in Raj's description (e.g., 5× in T10–L5 region), then calibrate scalars.
 
 ---
 
-## 9) Base excitation differences: Yoganandan vs paraglider drops
+## 9) Base excitation differences: flat-style vs drop-style
 
-### 9.1 Yoganandan pulses start and end at 0 g (inertial)
+### 9.1 Flat-style pulses start and end at 0 g (inertial)
 Interpretation:
 - seat is not in freefall; occupant is gravity-settled.
 So calibration runs must start from a **gravity-preloaded equilibrium**.
@@ -228,7 +247,7 @@ So calibration runs must start from a **gravity-preloaded equilibrium**.
 Implementation:
 - compute static equilibrium or run a settling stage with `a_base(t)=0` before applying the pulse.
 
-### 9.2 Paraglider drop segments start/end near -1 g (freefall)
+### 9.2 Drop-style segments start/end near -1 g (freefall)
 Interpretation:
 - base is in freefall before/after contact.
 So drop simulations start with **unloaded/freefall initial state**.
@@ -238,7 +257,7 @@ Implementation:
 
 ---
 
-## 10) Calibration strategy (fit human model to Yoganandan’s 5 cases)
+## 10) Calibration strategy (fit human model to Yoganandan's 5 cases)
 
 We have only 5 reference pulses, so we must keep calibration low-dimensional to avoid overfitting.
 
@@ -263,32 +282,28 @@ Sign:
 
 ---
 
-## 11) Outputs and visualizations (3 charts)
+## 11) Outputs and visualizations
 
 For each simulated run (drop file):
-1. **Displacement plot**
-   - x-axis: time (ms)
-   - y-axis: displacement (mm)
-   - one line per node (pelvis, L5…T1, head)
-   - shows “wave up the spine”
 
-2. **Force plot**
-   - x-axis: time (ms)
-   - y-axis: force (kN)
-   - one line per element (buttocks, L5–S1, …, T12–L1, …)
-   - highlight T12–L1
+1. **Displacement plot** (with acceleration subplot)
+   - Top: displacement (mm) vs time (ms), one line per node
+   - Bottom: filtered base acceleration (g) vs time (ms)
 
-3. **Mixed plot: displacement colored by force below**
-   - each node displacement curve is colored by the force in the junction below it
-   - provides a quick visual sense of where high forces occur during the wave propagation
+2. **Force plot** (with acceleration subplot)
+   - Top: force (kN) vs time (ms), one line per element
+   - Bottom: filtered base acceleration (g) vs time (ms)
+
+3. **Mixed plot: displacement colored by force** (with acceleration subplot)
+   - Top: node displacement curves colored by junction force below
+   - Bottom: filtered base acceleration (g) vs time (ms)
+
+4. **Gravity-settling plot** (flat-style only, no acceleration subplot)
+   - Shows pre-simulation settling phase
 
 Export:
-- Additionally write a `timeseries.csv` per run containing:
-  - time,
-  - base acceleration (g),
-  - all node displacements (mm),
-  - all element forces (kN),
-  so that external plotting or later visualization is easy.
+- `timeseries.csv` per run containing:
+  - time, base acceleration (g), all node displacements (mm), all element forces (kN)
 
 ---
 
@@ -296,8 +311,8 @@ Export:
 
 ### CSV format
 Input CSV files have at least columns:
-- `time0`
-- `accel`
+- `time0` or `time`
+- `accel` or `acceleration`
 
 Example:
 ```
@@ -314,40 +329,35 @@ We resample to a uniform time grid using:
 - median dt of positive time deltas
 - linear interpolation
 
-This mirrors the TS approach and prevents issues with irregular sampling.
-
 ### CFC Filter (SAE J211/1)
-We implement the same CFC idea as your TS code:
+We implement CFC filtering:
 - CFC → design frequency mapping: `f_design = 2.0775 * CFC`
 - 2nd order Butterworth per pass (implemented as 2nd order SOS)
 - forward + backward filtering (zero-phase), i.e. `sosfiltfilt`
-- no padding (`padtype=None`, `padlen=0`), matching your reference snippet.
+- no padding (`padtype=None`, `padlen=0`)
 
 Default CFC = 75.
 
 ---
 
-## 13) Software structure (implemented)
+## 13) Software structure
 
 ### Script 1: OpenSim extraction → JSON
 - Reads `.osim`, extracts all body masses.
-- Writes JSON:
-  - model name/path
-  - total mass
-  - dictionary of `{ bodyName: massKg }`
+- Writes JSON with model name, total mass, body masses dict.
 
 ### Script 2: Main simulation + calibration
 - Reads mass JSON
 - Builds chain masses (with helmet + partial arms)
-- Builds baseline stiffness/damping from Raj
-- Loads digitized Yoganandan cases (accel + force)
+- Builds baseline stiffness/damping from Raj 2019
+- Loads digitized calibration cases (accel + force)
 - Calibrates the 4 scalars
 - Processes all drop CSV files:
-  - resample
-  - CFC filter
-  - hit-range extract
+  - resample, CFC filter
+  - style detection (duration-based)
+  - hit-range extract (drop-style) or full signal (flat-style)
   - simulate
-  - export `timeseries.csv` + 3 PNG charts
+  - export `timeseries.csv` + PNG charts
   - save summary JSON with peak T12–L1 force per run
 
 ---
@@ -375,19 +385,23 @@ Default CFC = 75.
 ## 15) How to run (high level)
 
 1. Extract OpenSim masses:
-   - `python extract_opensim_masses.py --model path/to/MaleFullBodyModel_v2.0_OS4.osim --geom path/to/Geometry --out masses.json`
+   ```bash
+   python extract_opensim_masses.py --model path/to/MaleFullBodyModel.osim --out masses.json
+   ```
 
 2. Create a `config.json` pointing to:
    - `masses.json`
-   - digitized Yoganandan accel/force CSVs
+   - digitized calibration accel/force CSVs
    - drop CSV folder
    - output folder
 
 3. Run simulation:
-   - `python simulate_spine.py --config config.json`
+   ```bash
+   python simulate.py
+   ```
 
 Outputs will appear in:
-- `output_dir/`
+- `output/`
   - `calibration_result.json`
   - `summary.json`
   - per-drop folder with:
@@ -395,15 +409,18 @@ Outputs will appear in:
     - `displacements.png`
     - `forces.png`
     - `mixed.png`
+    - `gravity_settling.png` (flat-style only)
 
 ---
 
-## 16) Key decisions summary (one list)
+## 16) Key decisions summary
 
 - Use OpenSim **only** for mass distribution.
 - Simulate a 1D axial chain: base → buttocks → pelvis → vertebrae → head.
 - Use protector behavior **as measured** (base acceleration), do not model protector mechanics.
-- Use only the contact segment: threshold peak > 5 g, expand to -0.85 g bounds.
+- **Detection**: duration < 300 ms → flat-style; duration ≥ 300 ms → drop-style.
+- **Drop-style**: extract contact segment via peak/freefall thresholds, start unloaded.
+- **Flat-style**: use full signal, baseline to 0 g, start gravity-settled.
 - Include gravity; rely on inertial acceleration convention (idle 0 g, freefall -1 g).
 - Calibration uses Yoganandan 2021 digitized pulses + force histories.
 - Calibrate only 4 global scalars (spine/buttocks stiffness/damping multipliers).
@@ -414,10 +431,9 @@ Outputs will appear in:
 
 ---
 
-## 17) References (used in decision-making)
+## 17) References
 
 - Yoganandan et al., 2021: FE caudo-cephalad loading; thoracolumbar disc forces and injury risk vs pulse shape.
-- Kitazaki & Griffin, 1997: distributed/FE biodynamic model; buttocks compliance critical for resonance behavior (low-frequency context).
-- Raj & Krishnapillai, 2019: improved injury parameter model; provides baseline stiffness tables used here.
-- Bruno/Allaire/Anderson OpenSim thoracolumbar models: used here for anthropometric mass distribution only.
-
+- Kitazaki & Griffin, 1997: distributed/FE biodynamic model; buttocks compliance critical for resonance behavior.
+- Raj & Krishnapillai, 2019: improved injury parameter model; provides baseline stiffness tables.
+- Bruno/Allaire/Anderson OpenSim thoracolumbar models: used for anthropometric mass distribution.

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import csv
-import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+
+import numpy as np
 
 
 @dataclass
@@ -14,13 +14,13 @@ class TimeSeries:
 
 
 def _detect_delimiter(header_line: str) -> str:
-    semicolons = header_line.count(';')
-    commas = header_line.count(',')
-    return ';' if semicolons >= commas and semicolons > 0 else ','
+    semicolons = header_line.count(";")
+    commas = header_line.count(",")
+    return ";" if semicolons >= commas and semicolons > 0 else ","
 
 
 def _parse_number(s: str) -> float:
-    return float(s.strip().replace(',', '.'))
+    return float(s.strip().replace(",", "."))
 
 
 def _detect_time_is_ms(max_time: float) -> bool:
@@ -50,14 +50,13 @@ def parse_csv_series(
     time_candidates: Iterable[str],
     value_candidates: Iterable[str],
 ) -> TimeSeries:
-    text = path.read_text(encoding='utf-8', errors='ignore')
-    lines = [l.strip() for l in text.splitlines() if l.strip() and not l.strip().startswith('#')]
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    lines = [l.strip() for l in text.splitlines() if l.strip() and not l.strip().startswith("#")]
 
     header_idx = _find_header_idx(
-        lines, required=['time', 'accel'] if 'accel' in value_candidates else ['time']
+        lines, required=["time", "accel"] if "accel" in value_candidates else ["time"]
     )
     if header_idx == -1:
-        # Fallback: first non-empty line as header
         header_idx = 0
 
     header_line = lines[header_idx]
@@ -69,7 +68,7 @@ def parse_csv_series(
     col_val = _find_col(headers, value_candidates)
 
     if col_time == -1 or col_val == -1:
-        raise ValueError(f'Missing columns in {path.name}: time={col_time}, value={col_val}')
+        raise ValueError(f"Missing columns in {path.name}: time={col_time}, value={col_val}")
 
     raw_rows: list[tuple[float, float]] = []
     for line in lines[header_idx + 1 :]:
@@ -84,7 +83,7 @@ def parse_csv_series(
         raw_rows.append((t, v))
 
     if not raw_rows:
-        raise ValueError(f'No valid rows found in {path.name}')
+        raise ValueError(f"No valid rows found in {path.name}")
 
     max_time = max(r[0] for r in raw_rows)
     is_ms = _detect_time_is_ms(max_time)
@@ -96,15 +95,12 @@ def parse_csv_series(
 
 
 def resample_to_uniform(series: TimeSeries) -> tuple[TimeSeries, float]:
-    import numpy as np
-
     t = np.asarray(series.time_s, dtype=float)
     x = np.asarray(series.values, dtype=float)
 
     if t.size < 2:
         return series, 1000.0
 
-    # Sort by time
     order = np.argsort(t)
     t = t[order]
     x = x[order]
