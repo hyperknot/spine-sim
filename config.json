@@ -42,5 +42,11 @@
   },
   "drop_baseline_correction": true,
   "gravity_settle_ms": 150.0,
-  "output_dir": "output"
+  "output_dir": "output",
+  "plotting": {
+    "buttocks_height_mm": 60.0,
+    "show_element_thickness": false,
+    "stack_elements": true,
+    "buttocks_clamp_to_height": true
+  }
 }

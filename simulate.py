@@ -16,6 +16,7 @@ from spine_sim.io import parse_csv_series, resample_to_uniform
 from spine_sim.model import newmark_nonlinear
 from spine_sim.model_paths import get_model_path
 from spine_sim.plotting import (
+    DEFAULT_BUTTOCKS_HEIGHT_MM,
     plot_displacement_colored_by_force,
     plot_displacements,
     plot_forces,
@@ -50,6 +51,8 @@ CALIBRATION_CASE_NAMES = ["50ms", "75ms", "100ms", "150ms", "200ms"]
 
 # Calibration force sign: -1 because Yoganandan reports compression as negative
 CALIBRATION_FORCE_SIGN = -1.0
+
+CALIBRATION_SCALE_BOUNDS = (0.05, 20.0)
 
 
 @dataclass
@@ -158,6 +161,27 @@ def _get_model_type(config: dict) -> str:
 def _get_calibration_mode(config: dict) -> str:
     calibration_cfg = config.get("calibration", {})
     return str(calibration_cfg.get("mode", "peaks")).lower()
+
+
+def _get_plotting_config(config: dict) -> tuple[float, bool, bool, bool]:
+    plot_cfg = config.get("plotting", {})
+    buttocks_height_mm = float(plot_cfg.get("buttocks_height_mm", DEFAULT_BUTTOCKS_HEIGHT_MM))
+    show_element_thickness = bool(plot_cfg.get("show_element_thickness", False))
+    stack_elements = bool(plot_cfg.get("stack_elements", True))
+    buttocks_clamp_to_height = bool(plot_cfg.get("buttocks_clamp_to_height", True))
+    return buttocks_height_mm, show_element_thickness, stack_elements, buttocks_clamp_to_height
+
+
+def _get_calibration_accel_files() -> list[Path]:
+    files: list[Path] = []
+    for name in CALIBRATION_CASE_NAMES:
+        accel_path = CALIBRATION_YOGANANDAN_DIR / f"accel_{name}.csv"
+        if not accel_path.exists():
+            raise FileNotFoundError(
+                f"Missing calibration accel file for {name}: {accel_path.name}"
+            )
+        files.append(accel_path)
+    return files
 
 
 def load_curve_calibration_cases() -> list[CalibrationCase]:
@@ -360,6 +384,249 @@ def process_input_file(
     return t_seg, a_seg, a_raw_seg, info
 
 
+def _simulate_peak_case(model, case: PeakCalibrationCase):
+    y0 = np.zeros(model.size(), dtype=float)
+    v0 = np.zeros(model.size(), dtype=float)
+    s0 = np.zeros((model.n_elems(), model.n_maxwell()), dtype=float)
+
+    if case.settle_ms > 0.0:
+        dt = float(np.median(np.diff(case.time_s)))
+        n_settle = int(round((case.settle_ms / 1000.0) / dt)) + 1
+        t_settle = dt * np.arange(n_settle)
+        a_settle = np.zeros_like(t_settle)
+        sim_settle = newmark_nonlinear(model, t_settle, a_settle, y0, v0, s0)
+        y0 = sim_settle.y[-1].copy()
+        v0 = sim_settle.v[-1].copy()
+        s0 = sim_settle.maxwell_state_n[-1].copy()
+
+    return newmark_nonlinear(model, case.time_s, case.accel_g, y0, v0, s0)
+
+
+def _summarize_peak_cases(
+    label: str,
+    model,
+    cases: list[PeakCalibrationCase],
+    t12_element_index: int,
+    buttocks_element_index: int,
+) -> None:
+    head_idx = model.node_names.index("HEAD")
+    pelvis_idx = model.node_names.index("pelvis")
+
+    print(f"\nDEBUG: {label}")
+    for case in cases:
+        sim = _simulate_peak_case(model, case)
+        f_t12 = sim.element_forces_n[:, t12_element_index]
+        f_butt = sim.element_forces_n[:, buttocks_element_index]
+
+        peak_t12_kN = float(np.max(f_t12) / 1000.0)
+        peak_butt_kN = float(np.max(f_butt) / 1000.0)
+        t_peak_ms = float(sim.time_s[np.argmax(f_t12)] * 1000.0)
+
+        max_head_compression_mm = -float(np.min(sim.y[:, head_idx]) * 1000.0)
+        max_pelvis_compression_mm = -float(np.min(sim.y[:, pelvis_idx]) * 1000.0)
+        spine_shortening_mm = max_head_compression_mm - max_pelvis_compression_mm
+
+        target_kN = float(case.target_peak_force_n / 1000.0)
+        residual_pct = 0.0 if target_kN == 0.0 else (peak_t12_kN - target_kN) / target_kN * 100.0
+
+        print(
+            f"  {case.name}: target={target_kN:.2f} kN, "
+            f"pred={peak_t12_kN:.2f} kN ({residual_pct:+.1f}%), "
+            f"t_peak={t_peak_ms:.1f} ms, "
+            f"butt={peak_butt_kN:.2f} kN, "
+            f"shortening={spine_shortening_mm:.1f} mm"
+        )
+
+
+def _report_scale_bounds(scales: dict, bounds: tuple[float, float]) -> None:
+    low, high = bounds
+    for key, value in scales.items():
+        if value <= low * 1.01 or value >= high * 0.99:
+            print(f"    DEBUG: {key}={value:.4f} is near bound [{low}, {high}]")
+
+
+def _run_simulation_batch(
+    *,
+    model,
+    input_files: list[Path],
+    output_root: Path,
+    heights_from_model: dict[str, float] | None,
+    drop_baseline_correction: bool,
+    settle_ms: float,
+    buttocks_height_mm: float,
+    show_element_thickness: bool,
+    stack_elements: bool,
+    buttocks_clamp_to_height: bool,
+) -> list[dict]:
+    if not input_files:
+        print("No input files found for this run.")
+        return []
+
+    t12_elem_idx = model.element_names.index("T12-L1")
+    butt_elem_idx = model.element_names.index("buttocks")
+    head_idx = model.node_names.index("HEAD")
+    pelvis_idx = model.node_names.index("pelvis")
+
+    output_root.mkdir(parents=True, exist_ok=True)
+    summary: list[dict] = []
+
+    for fpath in input_files:
+        print(f"\nProcessing {fpath.name}...")
+
+        t, a_filtered_g, a_raw_g, info = process_input_file(
+            fpath,
+            cfc=CFC,
+            peak_threshold_g=PEAK_THRESHOLD_G,
+            freefall_threshold_g=FREEFALL_THRESHOLD_G,
+            sim_duration_ms=SIM_DURATION_MS,
+            drop_baseline_correction=drop_baseline_correction,
+        )
+
+        y0 = np.zeros(model.size(), dtype=float)
+        v0 = np.zeros(model.size(), dtype=float)
+        s0 = np.zeros((model.n_elems(), model.n_maxwell()), dtype=float)
+
+        run_dir = output_root / fpath.stem
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
+        run_dir.mkdir(parents=True)
+
+        if info.style == "flat":
+            dt = info.dt_s
+            n_settle = int(round((settle_ms / 1000.0) / dt)) + 1
+            t_settle = dt * np.arange(n_settle)
+            a_settle = np.zeros_like(t_settle)
+
+            sim_settle = newmark_nonlinear(model, t_settle, a_settle, y0, v0, s0)
+
+            plot_gravity_settling(
+                sim_settle.time_s,
+                sim_settle.y,
+                model.node_names,
+                model.element_names,
+                run_dir / "gravity_settling.png",
+                heights_from_model=heights_from_model,
+                buttocks_height_mm=buttocks_height_mm,
+                show_element_thickness=show_element_thickness,
+                stack_elements=stack_elements,
+                buttocks_clamp_to_height=buttocks_clamp_to_height,
+            )
+
+            y0 = sim_settle.y[-1].copy()
+            v0 = sim_settle.v[-1].copy()
+            s0 = sim_settle.maxwell_state_n[-1].copy()
+
+        sim = newmark_nonlinear(model, t, a_filtered_g, y0, v0, s0)
+        forces = sim.element_forces_n
+
+        f_t12 = forces[:, t12_elem_idx]
+        f_butt = forces[:, butt_elem_idx]
+
+        max_head_compression_mm = -float(np.min(sim.y[:, head_idx]) * 1000.0)
+        max_pelvis_compression_mm = -float(np.min(sim.y[:, pelvis_idx]) * 1000.0)
+        max_spine_shortening_mm = max_head_compression_mm - max_pelvis_compression_mm
+
+        peak_base_g = float(np.max(a_filtered_g))
+        min_base_g = float(np.min(a_filtered_g))
+        peak_t12_kN = float(np.max(f_t12) / 1000.0)
+        peak_butt_kN = float(np.max(f_butt) / 1000.0)
+
+        write_timeseries_csv(
+            run_dir / "timeseries.csv",
+            sim.time_s,
+            sim.base_accel_g,
+            model.node_names,
+            model.element_names,
+            sim.y,
+            sim.v,
+            sim.a,
+            forces,
+        )
+
+        plot_displacements(
+            sim.time_s,
+            sim.y,
+            a_filtered_g,
+            model.node_names,
+            model.element_names,
+            run_dir / "displacements.png",
+            heights_from_model=heights_from_model,
+            buttocks_height_mm=buttocks_height_mm,
+            reference_frame="base",
+            show_element_thickness=show_element_thickness,
+            stack_elements=stack_elements,
+            buttocks_clamp_to_height=buttocks_clamp_to_height,
+        )
+        plot_forces(
+            sim.time_s,
+            forces,
+            a_filtered_g,
+            model.element_names,
+            run_dir / "forces.png",
+            highlight="T12-L1",
+        )
+        plot_displacement_colored_by_force(
+            sim.time_s,
+            sim.y,
+            forces,
+            a_filtered_g,
+            model.node_names,
+            model.element_names,
+            run_dir / "mixed.png",
+            heights_from_model=heights_from_model,
+            buttocks_height_mm=buttocks_height_mm,
+            reference_frame="base",
+            show_element_thickness=show_element_thickness,
+            stack_elements=stack_elements,
+            buttocks_clamp_to_height=buttocks_clamp_to_height,
+        )
+
+        elem_max_comp_mm: dict[str, float] = {}
+        for e_idx, ename in enumerate(model.element_names):
+            if e_idx == 0:
+                comp = np.maximum(-(sim.y[:, 0] + model.gap_m[0]), 0.0)
+            else:
+                lower = e_idx - 1
+                upper = e_idx
+                comp = np.maximum(-(sim.y[:, upper] - sim.y[:, lower] + model.gap_m[e_idx]), 0.0)
+            elem_max_comp_mm[ename] = float(np.max(comp) * 1000.0)
+
+        print(f"  Style: {info.style}")
+        print(f"  Sample rate: {info.sample_rate_hz:.1f} Hz, dt: {info.dt_s*1000.0:.3f} ms")
+        if info.style == "drop":
+            print(f"  Baseline correction: {'applied' if info.bias_correction_applied else 'not applied'} (bias={info.bias_correction_g:.4f} g)")
+        print(f"  Base accel: peak={peak_base_g:.2f} g, min={min_base_g:.2f} g")
+        print(f"  Peak buttocks: {peak_butt_kN:.2f} kN")
+        print(f"  Peak T12-L1: {peak_t12_kN:.2f} kN @ {float(sim.time_s[np.argmax(f_t12)]*1000.0):.1f} ms")
+
+        case_name = get_case_name_from_filename(fpath.stem)
+        if case_name and case_name in CALIBRATION_T12L1_PEAKS_KN:
+            ref = CALIBRATION_T12L1_PEAKS_KN[case_name]
+            print(f"  Reference (Yoganandan 2021): {ref:.2f} kN")
+
+        print(f"  Spine shortening: {max_spine_shortening_mm:.1f} mm")
+
+        summary.append(
+            {
+                "file": fpath.name,
+                "style": info.style,
+                "sample_rate_hz": info.sample_rate_hz,
+                "baseline_correction_applied": info.bias_correction_applied,
+                "baseline_correction_g": info.bias_correction_g,
+                "base_accel_peak_g": peak_base_g,
+                "base_accel_min_g": min_base_g,
+                "peak_buttocks_kN": peak_butt_kN,
+                "peak_T12L1_kN": peak_t12_kN,
+                "time_to_peak_ms": float(sim.time_s[np.argmax(f_t12)] * 1000.0),
+                "max_spine_shortening_mm": max_spine_shortening_mm,
+                "max_element_compression_mm": elem_max_comp_mm,
+            }
+        )
+
+    (output_root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    return summary
+
+
 def _run_calibrate_peaks(config_path: Path) -> None:
     config = _read_config(config_path)
     model_type = _get_model_type(config)
@@ -372,11 +639,15 @@ def _run_calibrate_peaks(config_path: Path) -> None:
     helmet_mass = float(config["model"].get("helmet_mass_kg", 0.7))
     mass_map = build_mass_map(masses_data, arm_recruitment=arm_recruitment, helmet_mass=helmet_mass)
 
+    heights_from_model = masses_data.get("heights_relative_to_pelvis_mm", None)
+
     base_model = model_path.build_model(mass_map, config)
     t12_elem_idx = base_model.element_names.index("T12-L1")
+    butt_elem_idx = base_model.element_names.index("buttocks")
 
     drop_baseline_correction = bool(config.get("drop_baseline_correction", True))
     settle_ms = float(config.get("gravity_settle_ms", 150.0))
+    buttocks_height_mm, show_element_thickness, stack_elements, buttocks_clamp_to_height = _get_plotting_config(config)
 
     cases, case_meta = load_peak_calibration_cases(
         drop_baseline_correction=drop_baseline_correction,
@@ -385,6 +656,16 @@ def _run_calibrate_peaks(config_path: Path) -> None:
 
     init_scales = load_calibration_scales(model_type, "peaks", model_path.default_scales)
     print(f"Running PEAK calibration for {model_type} (stiffness-only by default)...")
+    print(f"DEBUG: initial scales = {init_scales}")
+
+    init_model = model_path.apply_calibration(base_model, init_scales)
+    _summarize_peak_cases(
+        "Initial peak-fit summary",
+        init_model,
+        cases,
+        t12_elem_idx,
+        butt_elem_idx,
+    )
 
     result = model_path.calibrate_peaks(
         base_model,
@@ -392,6 +673,18 @@ def _run_calibrate_peaks(config_path: Path) -> None:
         t12_element_index=t12_elem_idx,
         init_scales=init_scales,
         calibrate_damping=False,
+    )
+
+    print(f"DEBUG: calibrated scales = {result.scales}")
+    _report_scale_bounds(result.scales, CALIBRATION_SCALE_BOUNDS)
+
+    calibrated_model = model_path.apply_calibration(base_model, result.scales)
+    _summarize_peak_cases(
+        "Final peak-fit summary",
+        calibrated_model,
+        cases,
+        t12_elem_idx,
+        butt_elem_idx,
     )
 
     out_dir = Path(config.get("output_dir", "output"))
@@ -418,6 +711,23 @@ def _run_calibrate_peaks(config_path: Path) -> None:
     print("Peak calibration complete. Updated calibration file:")
     print(f"  {CALIBRATION_ROOT / f'{model_type}.json'}")
 
+    print("\nRunning calibrated simulation on calibration inputs...")
+    calibration_inputs = _get_calibration_accel_files()
+    calibration_out_dir = out_dir / f"calibration_{model_type}_peaks"
+    _run_simulation_batch(
+        model=calibrated_model,
+        input_files=calibration_inputs,
+        output_root=calibration_out_dir,
+        heights_from_model=heights_from_model,
+        drop_baseline_correction=drop_baseline_correction,
+        settle_ms=settle_ms,
+        buttocks_height_mm=buttocks_height_mm,
+        show_element_thickness=show_element_thickness,
+        stack_elements=stack_elements,
+        buttocks_clamp_to_height=buttocks_clamp_to_height,
+    )
+    print(f"\nCalibration simulations written to {calibration_out_dir}/")
+
 
 def _run_calibrate_curves(config_path: Path) -> None:
     config = _read_config(config_path)
@@ -430,6 +740,8 @@ def _run_calibrate_curves(config_path: Path) -> None:
     arm_recruitment = float(config["model"].get("arm_recruitment", 0.5))
     helmet_mass = float(config["model"].get("helmet_mass_kg", 0.7))
     mass_map = build_mass_map(masses_data, arm_recruitment=arm_recruitment, helmet_mass=helmet_mass)
+
+    heights_from_model = masses_data.get("heights_relative_to_pelvis_mm", None)
 
     base_model = model_path.build_model(mass_map, config)
     t12_elem_idx = base_model.element_names.index("T12-L1")
@@ -474,6 +786,28 @@ def _run_calibrate_curves(config_path: Path) -> None:
 
     print("Curve calibration complete. Updated calibration file:")
     print(f"  {CALIBRATION_ROOT / f'{model_type}.json'}")
+
+    drop_baseline_correction = bool(config.get("drop_baseline_correction", True))
+    settle_ms = float(config.get("gravity_settle_ms", 150.0))
+    buttocks_height_mm, show_element_thickness, stack_elements, buttocks_clamp_to_height = _get_plotting_config(config)
+
+    calibrated_model = model_path.apply_calibration(base_model, result.scales)
+    print("\nRunning calibrated simulation on calibration inputs...")
+    calibration_inputs = _get_calibration_accel_files()
+    calibration_out_dir = out_dir / f"calibration_{model_type}_curves"
+    _run_simulation_batch(
+        model=calibrated_model,
+        input_files=calibration_inputs,
+        output_root=calibration_out_dir,
+        heights_from_model=heights_from_model,
+        drop_baseline_correction=drop_baseline_correction,
+        settle_ms=settle_ms,
+        buttocks_height_mm=buttocks_height_mm,
+        show_element_thickness=show_element_thickness,
+        stack_elements=stack_elements,
+        buttocks_clamp_to_height=buttocks_clamp_to_height,
+    )
+    print(f"\nCalibration simulations written to {calibration_out_dir}/")
 
 
 def write_timeseries_csv(
@@ -551,9 +885,6 @@ def main() -> None:
     scales = load_calibration_scales(model_type, calibration_mode, model_path.default_scales)
     model = model_path.apply_calibration(model, scales)
 
-    t12_elem_idx = model.element_names.index("T12-L1")
-    butt_elem_idx = model.element_names.index("buttocks")
-
     out_dir = Path(config["output_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -562,152 +893,22 @@ def main() -> None:
     print(f"Drop baseline correction: {'enabled' if drop_baseline_correction else 'disabled'}")
 
     drop_files = sorted(DROPS_DIR.glob(DROPS_PATTERN))
-    summary = []
-
     settle_ms = float(config.get("gravity_settle_ms", 150.0))
+    buttocks_height_mm, show_element_thickness, stack_elements, buttocks_clamp_to_height = _get_plotting_config(config)
 
-    for fpath in drop_files:
-        print(f"\nProcessing {fpath.name}...")
+    _run_simulation_batch(
+        model=model,
+        input_files=drop_files,
+        output_root=out_dir,
+        heights_from_model=heights_from_model,
+        drop_baseline_correction=drop_baseline_correction,
+        settle_ms=settle_ms,
+        buttocks_height_mm=buttocks_height_mm,
+        show_element_thickness=show_element_thickness,
+        stack_elements=stack_elements,
+        buttocks_clamp_to_height=buttocks_clamp_to_height,
+    )
 
-        t, a_filtered_g, a_raw_g, info = process_input_file(
-            fpath,
-            cfc=CFC,
-            peak_threshold_g=PEAK_THRESHOLD_G,
-            freefall_threshold_g=FREEFALL_THRESHOLD_G,
-            sim_duration_ms=SIM_DURATION_MS,
-            drop_baseline_correction=drop_baseline_correction,
-        )
-
-        y0 = np.zeros(model.size(), dtype=float)
-        v0 = np.zeros(model.size(), dtype=float)
-        s0 = np.zeros((model.n_elems(), model.n_maxwell()), dtype=float)
-
-        run_dir = out_dir / fpath.stem
-        if run_dir.exists():
-            shutil.rmtree(run_dir)
-        run_dir.mkdir(parents=True)
-
-        if info.style == "flat":
-            dt = info.dt_s
-            n_settle = int(round((settle_ms / 1000.0) / dt)) + 1
-            t_settle = dt * np.arange(n_settle)
-            a_settle = np.zeros_like(t_settle)
-
-            sim_settle = newmark_nonlinear(model, t_settle, a_settle, y0, v0, s0)
-
-            plot_gravity_settling(
-                sim_settle.time_s,
-                sim_settle.y,
-                model.node_names,
-                run_dir / "gravity_settling.png",
-            )
-
-            y0 = sim_settle.y[-1].copy()
-            v0 = sim_settle.v[-1].copy()
-            s0 = sim_settle.maxwell_state_n[-1].copy()
-
-        sim = newmark_nonlinear(model, t, a_filtered_g, y0, v0, s0)
-        forces = sim.element_forces_n
-
-        f_t12 = forces[:, t12_elem_idx]
-        f_butt = forces[:, butt_elem_idx]
-
-        head_idx = model.node_names.index("HEAD")
-        pelvis_idx = model.node_names.index("pelvis")
-
-        max_head_compression_mm = -float(np.min(sim.y[:, head_idx]) * 1000.0)
-        max_pelvis_compression_mm = -float(np.min(sim.y[:, pelvis_idx]) * 1000.0)
-        max_spine_shortening_mm = max_head_compression_mm - max_pelvis_compression_mm
-
-        peak_base_g = float(np.max(a_filtered_g))
-        min_base_g = float(np.min(a_filtered_g))
-        peak_t12_kN = float(np.max(f_t12) / 1000.0)
-        peak_butt_kN = float(np.max(f_butt) / 1000.0)
-
-        write_timeseries_csv(
-            run_dir / "timeseries.csv",
-            sim.time_s,
-            sim.base_accel_g,
-            model.node_names,
-            model.element_names,
-            sim.y,
-            sim.v,
-            sim.a,
-            forces,
-        )
-
-        plot_displacements(
-            sim.time_s,
-            sim.y,
-            a_filtered_g,
-            model.node_names,
-            run_dir / "displacements.png",
-            heights_from_model=heights_from_model,
-            reference_frame="pelvis",
-        )
-        plot_forces(
-            sim.time_s,
-            forces,
-            a_filtered_g,
-            model.element_names,
-            run_dir / "forces.png",
-            highlight="T12-L1",
-        )
-        plot_displacement_colored_by_force(
-            sim.time_s,
-            sim.y,
-            forces,
-            a_filtered_g,
-            model.node_names,
-            model.element_names,
-            run_dir / "mixed.png",
-            heights_from_model=heights_from_model,
-            reference_frame="pelvis",
-        )
-
-        elem_max_comp_mm: dict[str, float] = {}
-        for e_idx, ename in enumerate(model.element_names):
-            if e_idx == 0:
-                comp = np.maximum(-(sim.y[:, 0] + model.gap_m[0]), 0.0)
-            else:
-                lower = e_idx - 1
-                upper = e_idx
-                comp = np.maximum(-(sim.y[:, upper] - sim.y[:, lower] + model.gap_m[e_idx]), 0.0)
-            elem_max_comp_mm[ename] = float(np.max(comp) * 1000.0)
-
-        print(f"  Style: {info.style}")
-        print(f"  Sample rate: {info.sample_rate_hz:.1f} Hz, dt: {info.dt_s*1000.0:.3f} ms")
-        if info.style == "drop":
-            print(f"  Baseline correction: {'applied' if info.bias_correction_applied else 'not applied'} (bias={info.bias_correction_g:.4f} g)")
-        print(f"  Base accel: peak={peak_base_g:.2f} g, min={min_base_g:.2f} g")
-        print(f"  Peak buttocks: {peak_butt_kN:.2f} kN")
-        print(f"  Peak T12-L1: {peak_t12_kN:.2f} kN @ {float(sim.time_s[np.argmax(f_t12)]*1000.0):.1f} ms")
-
-        case_name = get_case_name_from_filename(fpath.stem)
-        if case_name and case_name in CALIBRATION_T12L1_PEAKS_KN:
-            ref = CALIBRATION_T12L1_PEAKS_KN[case_name]
-            print(f"  Reference (Yoganandan 2021): {ref:.2f} kN")
-
-        print(f"  Spine shortening: {max_spine_shortening_mm:.1f} mm")
-
-        summary.append(
-            {
-                "file": fpath.name,
-                "style": info.style,
-                "sample_rate_hz": info.sample_rate_hz,
-                "baseline_correction_applied": info.bias_correction_applied,
-                "baseline_correction_g": info.bias_correction_g,
-                "base_accel_peak_g": peak_base_g,
-                "base_accel_min_g": min_base_g,
-                "peak_buttocks_kN": peak_butt_kN,
-                "peak_T12L1_kN": peak_t12_kN,
-                "time_to_peak_ms": float(sim.time_s[np.argmax(f_t12)] * 1000.0),
-                "max_spine_shortening_mm": max_spine_shortening_mm,
-                "max_element_compression_mm": elem_max_comp_mm,
-            }
-        )
-
-    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(f"\nResults written to {out_dir}/")
 
 
