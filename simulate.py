@@ -11,7 +11,6 @@ Pipeline:
 """
 
 import click
-
 from spine_sim.simulation import (
     run_calibrate_buttocks,
     run_calibrate_drop,
@@ -26,35 +25,35 @@ def cli():
     pass
 
 
-@cli.command("calibrate-buttocks")
+@cli.command('calibrate-buttocks')
 def calibrate_buttocks():
     """Calibrate buttocks model from Toen 2012 paper data."""
     run_calibrate_buttocks(echo=click.echo)
 
 
-@cli.command("simulate-buttocks")
+@cli.command('simulate-buttocks')
 def simulate_buttocks():
     """Simulate Toen drop suite and generate plots."""
     run_simulate_buttocks(echo=click.echo)
 
 
-@cli.command("calibrate-drop-peaks")
+@cli.command('calibrate-drop-peaks')
 def calibrate_drop_peaks():
     """Calibrate spine stiffness scales to Yoganandan peak forces."""
-    run_calibrate_drop(echo=click.echo, mode="peaks")
+    run_calibrate_drop(echo=click.echo, mode='peaks')
 
 
-@cli.command("calibrate-drop-curves")
+@cli.command('calibrate-drop-curves')
 def calibrate_drop_curves():
     """Calibrate spine model to Yoganandan force-time curves."""
-    run_calibrate_drop(echo=click.echo, mode="curves")
+    run_calibrate_drop(echo=click.echo, mode='curves')
 
 
-@cli.command("simulate-drop")
+@cli.command('simulate-drop')
 def simulate_drop():
     """Run drop simulations on acceleration data."""
     run_simulate_drop(echo=click.echo)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     cli()

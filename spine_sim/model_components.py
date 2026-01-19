@@ -11,6 +11,10 @@ def build_spine_elements(
     Build the common spine element definitions (names, masses, k, c).
 
     Shared by all model paths (maxwell, zwt, etc.).
+
+    Note:
+      Buttocks k/c are initialized later from config.json in model_paths._build_spine_model().
+      Here we only set placeholders for element 0.
     """
     node_names = [
         'pelvis',
@@ -136,9 +140,10 @@ def build_spine_elements(
         'T1-HEAD',
     ]
 
+    # placeholders for buttocks; real values are injected from config later
     k_elem = np.array(
         [
-            8.8425e4,  # buttocks
+            1.0,  # buttocks placeholder
             k['l5-s1'],
             k['l4-l5'],
             k['l3-l4'],
@@ -163,7 +168,7 @@ def build_spine_elements(
 
     c_elem = np.array(
         [
-            1700.0,  # buttocks
+            0.0,  # buttocks placeholder
             c_disc('l5-s1'),
             c_disc('l4-l5'),
             c_disc('l3-l4'),

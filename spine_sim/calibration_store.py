@@ -14,41 +14,41 @@ def calibration_file(model_type: str) -> Path:
     return CALIBRATION_ROOT / f'{model_type}.json'
 
 
-def _default_doc(model_type: str, default_scales: dict) -> dict:
+def _default_doc(model_type: str, default_params: dict) -> dict:
     return {
         'model': model_type,
         'active_mode': 'peaks',
-        'peaks': {k: float(v) for k, v in default_scales.items()},
-        'curves': {k: float(v) for k, v in default_scales.items()},
+        'peaks': {k: float(v) for k, v in default_params.items()},
+        'curves': {k: float(v) for k, v in default_params.items()},
     }
 
 
-def ensure_calibration_file(model_type: str, default_scales: dict) -> Path:
+def ensure_calibration_file(model_type: str, default_params: dict) -> Path:
     path = calibration_file(model_type)
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        doc = _default_doc(model_type, default_scales)
+        doc = _default_doc(model_type, default_params)
         path.write_text(json.dumps(doc, indent=2) + '\n', encoding='utf-8')
     return path
 
 
-def load_calibration_doc(model_type: str, default_scales: dict) -> dict:
-    path = ensure_calibration_file(model_type, default_scales)
+def load_calibration_doc(model_type: str, default_params: dict) -> dict:
+    path = ensure_calibration_file(model_type, default_params)
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-def load_calibration_scales(model_type: str, mode: str, default_scales: dict) -> dict:
+def load_calibration_params(model_type: str, mode: str, default_params: dict) -> dict:
     mode = mode.lower()
     if mode not in VALID_MODES:
         raise ValueError(f"Unknown calibration mode '{mode}'. Use: {sorted(VALID_MODES)}")
 
-    doc = load_calibration_doc(model_type, default_scales)
-    scales = doc.get(mode, {})
+    doc = load_calibration_doc(model_type, default_params)
+    params = doc.get(mode, {})
 
-    if not isinstance(scales, dict):
-        raise ValueError(f"Missing scales for {model_type} mode '{mode}' in calibration file.")
+    if not isinstance(params, dict):
+        raise ValueError(f"Missing params for {model_type} mode '{mode}' in calibration file.")
 
-    return {k: float(scales.get(k, v)) for k, v in default_scales.items()}
+    return {k: float(params.get(k, v)) for k, v in default_params.items()}
 
 
 def write_calibration_result(
@@ -56,22 +56,21 @@ def write_calibration_result(
     mode: str,
     result: CalibrationResult,
     cases: list[dict] | list[str],
-    default_scales: dict,
+    default_params: dict,
 ) -> None:
     mode = mode.lower()
     if mode not in VALID_MODES:
         raise ValueError(f"Unknown calibration mode '{mode}'. Use: {sorted(VALID_MODES)}")
 
-    # Print debug info to console
-    print(f"\n=== CALIBRATION RESULT ({model_type}/{mode}) ===")
-    print(f"  success: {result.success}")
-    print(f"  cost: {result.cost}")
-    print(f"  residual_norm: {result.residual_norm}")
-    print(f"  cases: {cases}")
+    print(f'\n=== CALIBRATION RESULT ({model_type}/{mode}) ===')
+    print(f'  success: {result.success}')
+    print(f'  cost: {result.cost}')
+    print(f'  residual_norm: {result.residual_norm}')
+    print(f'  cases: {cases}')
 
-    doc = load_calibration_doc(model_type, default_scales)
+    doc = load_calibration_doc(model_type, default_params)
     doc['active_mode'] = mode
-    doc[mode] = result.scales
+    doc[mode] = result.params
 
     path = calibration_file(model_type)
     path.write_text(json.dumps(doc, indent=2) + '\n', encoding='utf-8')

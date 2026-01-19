@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+
 # Default thresholds for drop impact detection
 DEFAULT_PEAK_THRESHOLD_G = 5.0
 DEFAULT_FREEFALL_THRESHOLD_G = -0.85

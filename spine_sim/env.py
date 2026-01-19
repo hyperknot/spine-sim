@@ -30,11 +30,11 @@ def env_bool(name: str) -> bool | None:
     if v is None:
         return None
     s = v.strip().lower()
-    if s in {"1", "true", "yes", "y", "on"}:
+    if s in {'1', 'true', 'yes', 'y', 'on'}:
         return True
-    if s in {"0", "false", "no", "n", "off"}:
+    if s in {'0', 'false', 'no', 'n', 'off'}:
         return False
-    raise ValueError(f"Invalid boolean env var {name}={v!r}. Use true/false, 1/0, yes/no.")
+    raise ValueError(f'Invalid boolean env var {name}={v!r}. Use true/false, 1/0, yes/no.')
 
 
 def env_float_list(name: str) -> list[float] | None:
@@ -42,5 +42,5 @@ def env_float_list(name: str) -> list[float] | None:
     if v is None:
         return None
     # Accept "3.5,8.0" or "3.5 8.0"
-    parts = [p.strip() for p in v.replace(" ", ",").split(",") if p.strip()]
+    parts = [p.strip() for p in v.replace(' ', ',').split(',') if p.strip()]
     return [float(p) for p in parts]

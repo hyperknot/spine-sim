@@ -10,11 +10,34 @@
     "style_duration_threshold_ms": 300.0,
     "sim_duration_ms": 200.0,
     "gravity_settle_ms": 150.0,
-    "calibration_mode": "peaks"
+    "calibration_mode": "peaks",
+
+    "calibration_bounds": {
+      "s_k_spine": [0.5, 2.0],
+      "s_c_spine": [0.5, 2.0]
+    }
   },
 
   "buttock": {
-    "velocities_mps": [3.5, 8.0]
+    "velocities_mps": [3.5, 8.0],
+
+    "densification": {
+      "stop_k_n_per_m": 5000000.0,
+      "stop_smoothing_mm": 1.0
+    },
+
+    "calibration": {
+      "init": {
+        "k_n_per_m": 180500.0,
+        "c_ns_per_m": 3130.0,
+        "limit_mm": 39.0
+      },
+      "bounds": {
+        "k_n_per_m": [90250.0, 361000.0],
+        "c_ns_per_m": [1565.0, 6260.0],
+        "limit_mm": [30.0, 70.0]
+      }
+    }
   },
 
   "maxwell": {

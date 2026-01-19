@@ -1,30 +1,38 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.optimize import least_squares
-
 from spine_sim.model import SpineModel, initial_state_static, newmark_nonlinear
 from spine_sim.toen_targets import (
     TOEN_FLOOR_STIFFNESS_N_PER_M,
     TOEN_GROUND_PEAKS_KN_AVG_PAPER,
 )
-from spine_sim.toen_subjects import (
-    DEFAULT_50TH_MALE_TOTAL_MASS_KG,
-    TOEN_TABLE1_MASSES_50TH_KG,
-    TOEN_SUBJECTS,
-    subject_buttocks_kc,
-    toen_torso_mass_50th_kg,
-    toen_torso_mass_scaled_kg,
-)
+
+
+# ----------------------------
+# Toen 2012 Table 1 masses (50th male)
+# Pelvis + L4 + L5 + Sacrum + Upper body + Skin over ITs
+# ----------------------------
+TOEN_TABLE1_MASSES_50TH_KG = {
+    'pelvis': 16.0,
+    'l4': 2.5,
+    'l5': 1.8,
+    'sacrum': 0.7,
+    'upper_body': 33.0,
+    'skin': 0.01,
+}
+
+TOEN_TABLE1_TORSO_TOTAL_MASS_KG = float(sum(TOEN_TABLE1_MASSES_50TH_KG.values()))
+TOEN_TABLE1_SKIN_MASS_KG = float(TOEN_TABLE1_MASSES_50TH_KG['skin'])
+TOEN_TABLE1_BODY_MASS_KG = float(TOEN_TABLE1_TORSO_TOTAL_MASS_KG - TOEN_TABLE1_SKIN_MASS_KG)
 
 # ----------------------------
 # Hard-coded Toen run settings
 # ----------------------------
 TOEN_IMPACT_V_MPS = 3.5
-TOEN_SUBJECT_ID = "avg"
 TOEN_TARGETS = TOEN_GROUND_PEAKS_KN_AVG_PAPER
 
 # Hard-coded solver settings (used by both calibration and simulation unless overridden by caller).
@@ -33,14 +41,13 @@ TOEN_SOLVER_DURATION_S = 0.15
 TOEN_SOLVER_MAX_NEWTON_ITER = 10
 
 # Hard-coded calibration behavior.
-TOEN_CALIB_FLOORS = ["firm_95", "rigid_400"]
-TOEN_CALIB_LIMIT_BOUNDS_MM = (30.0, 60.0)
+TOEN_CALIB_FLOORS = ['firm_95', 'rigid_400']
 
 TOEN_FLOOR_THICKNESS_MM: dict[str, float | None] = {
-    "soft_59": 105.0,
-    "medium_67": 75.0,
-    "firm_95": 45.0,
-    "rigid_400": None,
+    'soft_59': 105.0,
+    'medium_67': 75.0,
+    'firm_95': 45.0,
+    'rigid_400': None,
 }
 
 
@@ -70,6 +77,7 @@ class ToenDropTrace:
     """
     Full time history for a single Toen drop simulation (2-DOF surrogate).
     """
+
     time_s: np.ndarray
     y_skin_m: np.ndarray
     y_body_m: np.ndarray
@@ -90,10 +98,10 @@ def build_toen_drop_model(
     buttocks_stop_k_n_per_m: float = 0.0,
     buttocks_stop_smoothing_mm: float = 1.0,
 ) -> SpineModel:
-    node_names = ["skin", "body"]
+    node_names = ['skin', 'body']
     masses = np.array([skin_mass_kg, body_mass_kg], dtype=float)
 
-    element_names = ["floor", "buttocks"]
+    element_names = ['floor', 'buttocks']
     k_elem = np.array([floor_k_n_per_m, buttocks_k_n_per_m], dtype=float)
     c_elem = np.array([0.0, buttocks_c_ns_per_m], dtype=float)
 
@@ -165,6 +173,7 @@ def simulate_toen_drop_trace(
     *,
     floor_name: str,
     body_mass_kg: float,
+    skin_mass_kg: float,
     buttocks_k_n_per_m: float,
     buttocks_c_ns_per_m: float,
     floor_k_n_per_m: float,
@@ -172,14 +181,10 @@ def simulate_toen_drop_trace(
     buttocks_limit_mm: float | None = None,
     buttocks_stop_k_n_per_m: float = 0.0,
     buttocks_stop_smoothing_mm: float = 1.0,
-    skin_mass_kg: float = TOEN_TABLE1_MASSES_50TH_KG["skin"],
     dt_s: float = TOEN_SOLVER_DT_S,
     duration_s: float = TOEN_SOLVER_DURATION_S,
     max_newton_iter: int = TOEN_SOLVER_MAX_NEWTON_ITER,
 ) -> tuple[ToenDropResult, ToenDropTrace]:
-    """
-    Full time-history simulation for plotting (force/compression vs time).
-    """
     model = build_toen_drop_model(
         body_mass_kg=body_mass_kg,
         skin_mass_kg=skin_mass_kg,
@@ -246,7 +251,6 @@ def simulate_toen_drop_trace(
         floor_overshoot_mm=None,
     )
 
-    # Time-history signals for plotting
     floor_comp = np.maximum(-y_skin, 0.0)
     butt_comp = np.maximum(-(y_body - y_skin), 0.0)
 
@@ -264,9 +268,6 @@ def simulate_toen_drop_trace(
 
 
 def simulate_toen_drop(**kwargs) -> ToenDropResult:
-    """
-    Summary-only simulation (kept for backwards compatibility).
-    """
     result, _trace = simulate_toen_drop_trace(**kwargs)
     return result
 
@@ -274,7 +275,6 @@ def simulate_toen_drop(**kwargs) -> ToenDropResult:
 def run_toen_suite(
     *,
     impact_velocities_mps: list[float],
-    male50_mass_kg: float = DEFAULT_50TH_MALE_TOTAL_MASS_KG,
     dt_s: float = TOEN_SOLVER_DT_S,
     duration_s: float = TOEN_SOLVER_DURATION_S,
     max_newton_iter: int = TOEN_SOLVER_MAX_NEWTON_ITER,
@@ -285,43 +285,40 @@ def run_toen_suite(
     buttocks_stop_smoothing_mm: float,
     warn_buttocks_comp_mm: float = 60.0,
 ) -> list[ToenDropResult]:
-    subj = TOEN_SUBJECTS[TOEN_SUBJECT_ID]
     targets = TOEN_TARGETS
 
-    torso_mass = toen_torso_mass_scaled_kg(subj.total_mass_kg, male50_mass_kg=male50_mass_kg)
+    skin_mass = TOEN_TABLE1_SKIN_MASS_KG
+    body_mass = TOEN_TABLE1_BODY_MASS_KG
+    torso_total = TOEN_TABLE1_TORSO_TOTAL_MASS_KG
 
-    print("\n=== TOEN DROP SUITE ===")
+    print('\n=== TOEN DROP SUITE (2-DOF surrogate) ===')
+    print(f'Table1 masses (kg): {json.dumps(TOEN_TABLE1_MASSES_50TH_KG)}')
+    print(f'Torso total (Table1 sum): {torso_total:.2f} kg')
+    print(f'Body mass: {body_mass:.2f} kg, Skin mass: {skin_mass:.3f} kg')
+    print(f'Buttocks: k={buttocks_k_n_per_m:.1f} N/m, c={buttocks_c_ns_per_m:.1f} Ns/m')
     print(
-        f"Subject: {TOEN_SUBJECT_ID}, subject_total_mass={subj.total_mass_kg:.2f} kg, height={subj.height_cm:.1f} cm"
+        f'Buttocks densification: limit={buttocks_limit_mm}, stop_k={buttocks_stop_k_n_per_m:.3g}, smoothing={buttocks_stop_smoothing_mm}'
     )
-    print(f"Male50 total mass assumption: {male50_mass_kg:.2f} kg")
+    print(f'Targets (avg paper): {json.dumps(targets)}')
+    print(f'Velocities requested (m/s): {impact_velocities_mps}')
     print(
-        f"Torso mass (Table1 sum scaled): {torso_mass:.2f} kg (Table1 sum={toen_torso_mass_50th_kg():.2f} kg)"
-    )
-    print(f"Buttocks: k={buttocks_k_n_per_m:.1f} N/m, c={buttocks_c_ns_per_m:.1f} Ns/m")
-    print(
-        f"Buttocks densification: limit={buttocks_limit_mm}, stop_k={buttocks_stop_k_n_per_m:.3g}, smoothing={buttocks_stop_smoothing_mm}"
-    )
-    print(f"Targets (avg paper): {json.dumps(targets)}")
-    print(f"Velocities requested (m/s): {impact_velocities_mps}")
-    print(
-        f"Solver: dt={dt_s*1000.0:.3f} ms, duration={duration_s*1000.0:.1f} ms, max_newton_iter={max_newton_iter}"
+        f'Solver: dt={dt_s * 1000.0:.3f} ms, duration={duration_s * 1000.0:.1f} ms, max_newton_iter={max_newton_iter}'
     )
 
     results: list[ToenDropResult] = []
 
     for v in impact_velocities_mps:
         v = float(v)
-        energy_j = 0.5 * torso_mass * v * v
-        print(f"\n--- Impact velocity: {v:.2f} m/s, KE≈{energy_j:.1f} J ---")
+        energy_j = 0.5 * torso_total * v * v
+        print(f'\n--- Impact velocity: {v:.2f} m/s, KE≈{energy_j:.1f} J ---')
 
-        # Only show target errors for the canonical Toen velocity 3.5 m/s.
         show_targets = abs(v - TOEN_IMPACT_V_MPS) < 1e-6
 
         for floor_name, k_floor in TOEN_FLOOR_STIFFNESS_N_PER_M.items():
             r = simulate_toen_drop(
                 floor_name=floor_name,
-                body_mass_kg=torso_mass,
+                body_mass_kg=body_mass,
+                skin_mass_kg=skin_mass,
                 buttocks_k_n_per_m=buttocks_k_n_per_m,
                 buttocks_c_ns_per_m=buttocks_c_ns_per_m,
                 floor_k_n_per_m=k_floor,
@@ -334,30 +331,31 @@ def run_toen_suite(
                 max_newton_iter=max_newton_iter,
             )
 
-            warn = ""
+            warn = ''
             if r.max_buttocks_comp_mm >= warn_buttocks_comp_mm:
                 warn += (
-                    f"  WARNING: buttocks_comp={r.max_buttocks_comp_mm:.1f} mm >= "
-                    f"{warn_buttocks_comp_mm:.1f} mm"
+                    f'  WARNING: buttocks_comp={r.max_buttocks_comp_mm:.1f} mm >= '
+                    f'{warn_buttocks_comp_mm:.1f} mm'
                 )
             if r.buttocks_overshoot_mm is not None and r.buttocks_overshoot_mm > 0.1:
-                warn += f"  WARNING: buttocks_overshoot={r.buttocks_overshoot_mm:.1f} mm"
+                warn += f'  WARNING: buttocks_overshoot={r.buttocks_overshoot_mm:.1f} mm'
 
-            static_txt = f" (static={r.static_buttocks_comp_mm:.2f} mm, Δ={r.delta_buttocks_comp_mm:.1f} mm)"
+            static_txt = (
+                f' (static={r.static_buttocks_comp_mm:.2f} mm, Δ={r.delta_buttocks_comp_mm:.1f} mm)'
+            )
 
             if show_targets:
                 tgt = float(targets[floor_name])
                 err = (r.peak_ground_kN - tgt) / tgt * 100.0
-                target_txt = f" (target={tgt:.3f} kN, {err:+.1f}%)"
+                target_txt = f' (target={tgt:.3f} kN, {err:+.1f}%)'
             else:
-                target_txt = ""
+                target_txt = ''
 
             print(
-                f"  {floor_name}: peak_ground={r.peak_ground_kN:.3f} kN"
-                f"{target_txt}, t_peak={r.t_peak_ms:.1f} ms, "
-                f"butt_comp={r.max_buttocks_comp_mm:.1f} mm{static_txt}, "
-                f"floor_comp={r.max_floor_comp_mm:.1f} mm"
-                + warn
+                f'  {floor_name}: peak_ground={r.peak_ground_kN:.3f} kN'
+                f'{target_txt}, t_peak={r.t_peak_ms:.1f} ms, '
+                f'butt_comp={r.max_buttocks_comp_mm:.1f} mm{static_txt}, '
+                f'floor_comp={r.max_floor_comp_mm:.1f} mm' + warn
             )
 
             results.append(r)
@@ -367,54 +365,58 @@ def run_toen_suite(
 
 def calibrate_toen_buttocks_model(
     *,
-    male50_mass_kg: float = DEFAULT_50TH_MALE_TOTAL_MASS_KG,
     buttocks_stop_k_n_per_m: float,
     buttocks_stop_smoothing_mm: float,
-    k0_n_per_m: float = 180_500.0,
-    c0_ns_per_m: float = 3_130.0,
-    limit0_mm: float = 39.0,
+    init_k_n_per_m: float,
+    init_c_ns_per_m: float,
+    init_limit_mm: float,
+    bounds_k_n_per_m: tuple[float, float],
+    bounds_c_ns_per_m: tuple[float, float],
+    bounds_limit_mm: tuple[float, float],
     debug_every: int = 5,
 ) -> dict:
     """
-    Simplified calibration:
-      - always subject avg
-      - always target avg (paper)
-      - always velocity 3.5 m/s
-      - always calib floors firm_95 + rigid_400
+    Toen surrogate calibration (2-DOF):
+      - fixed Table1 torso mass (no scaling)
+      - targets: avg paper
+      - v=3.5 m/s
+      - calib floors: firm_95 + rigid_400
+
+    Bounds/initial values are supplied by caller (config.json).
     """
     v0_mps = TOEN_IMPACT_V_MPS
     calib_floors = list(TOEN_CALIB_FLOORS)
     targets = TOEN_TARGETS
 
-    subj = TOEN_SUBJECTS[TOEN_SUBJECT_ID]
-    torso_mass = toen_torso_mass_scaled_kg(subj.total_mass_kg, male50_mass_kg=male50_mass_kg)
+    skin_mass = TOEN_TABLE1_SKIN_MASS_KG
+    body_mass = TOEN_TABLE1_BODY_MASS_KG
 
-    x0 = np.log(np.array([k0_n_per_m, c0_ns_per_m, limit0_mm], dtype=float))
+    x0 = np.log(np.array([init_k_n_per_m, init_c_ns_per_m, init_limit_mm], dtype=float))
 
-    limit_bounds = TOEN_CALIB_LIMIT_BOUNDS_MM
+    lb = np.log(
+        np.array([bounds_k_n_per_m[0], bounds_c_ns_per_m[0], bounds_limit_mm[0]], dtype=float)
+    )
+    ub = np.log(
+        np.array([bounds_k_n_per_m[1], bounds_c_ns_per_m[1], bounds_limit_mm[1]], dtype=float)
+    )
 
-    # Bounds:
-    # k: 50k–800k N/m, c: 200–20k Ns/m, limit: bounded.
-    lb = np.log(np.array([5.0e4, 2.0e2, float(limit_bounds[0])], dtype=float))
-    ub = np.log(np.array([8.0e5, 2.0e4, float(limit_bounds[1])], dtype=float))
-
-    eval_counter = {"n": 0}
+    eval_counter = {'n': 0}
 
     def residuals(logx: np.ndarray) -> np.ndarray:
-        eval_counter["n"] += 1
+        eval_counter['n'] += 1
         k_butt = float(np.exp(logx[0]))
         c_butt = float(np.exp(logx[1]))
         limit_mm = float(np.exp(logx[2]))
 
         res = []
-
         for floor_name in calib_floors:
             k_floor = float(TOEN_FLOOR_STIFFNESS_N_PER_M[floor_name])
             tgt = float(targets[floor_name])
 
             r = simulate_toen_drop(
                 floor_name=floor_name,
-                body_mass_kg=torso_mass,
+                body_mass_kg=body_mass,
+                skin_mass_kg=skin_mass,
                 buttocks_k_n_per_m=k_butt,
                 buttocks_c_ns_per_m=c_butt,
                 floor_k_n_per_m=k_floor,
@@ -428,11 +430,12 @@ def calibrate_toen_buttocks_model(
             )
             res.append((r.peak_ground_kN - tgt) / max(tgt, 1e-6))
 
-        # Enforce: rigid_400 reaches the limit at 3.5 m/s
-        rigid_floor = float(TOEN_FLOOR_STIFFNESS_N_PER_M["rigid_400"])
+        # Extra constraint: rigid_400 should reach the limit at 3.5 m/s.
+        rigid_floor = float(TOEN_FLOOR_STIFFNESS_N_PER_M['rigid_400'])
         r_rigid = simulate_toen_drop(
-            floor_name="rigid_400",
-            body_mass_kg=torso_mass,
+            floor_name='rigid_400',
+            body_mass_kg=body_mass,
+            skin_mass_kg=skin_mass,
             buttocks_k_n_per_m=k_butt,
             buttocks_c_ns_per_m=c_butt,
             floor_k_n_per_m=rigid_floor,
@@ -446,12 +449,12 @@ def calibrate_toen_buttocks_model(
         )
         res.append((r_rigid.max_buttocks_comp_mm - limit_mm) / 1.0)
 
-        if (eval_counter["n"] % max(debug_every, 1)) == 0:
+        if (eval_counter['n'] % max(debug_every, 1)) == 0:
             rms = float(np.sqrt(np.mean(np.square(res))))
             print(
-                "  DEBUG toen buttocks calib "
-                f"eval={eval_counter['n']}: "
-                f"k={k_butt:.1f}, c={c_butt:.1f}, limit={limit_mm:.2f} mm, rms={rms:.6f}"
+                '  DEBUG toen buttocks calib '
+                f'eval={eval_counter["n"]}: '
+                f'k={k_butt:.1f}, c={c_butt:.1f}, limit={limit_mm:.2f} mm, rms={rms:.6f}'
             )
 
         return np.asarray(res, dtype=float)
@@ -462,24 +465,21 @@ def calibrate_toen_buttocks_model(
     c_butt = float(np.exp(out.x[1]))
     limit_mm = float(np.exp(out.x[2]))
 
-    # Print calibration debug info to console
-    print("\n=== CALIBRATION RESULT ===")
-    print(f"  subject_id: {TOEN_SUBJECT_ID}")
-    print("  targets: avg paper")
-    print(f"  male50_mass_kg: {male50_mass_kg:.2f}")
-    print(f"  subject_total_mass_kg: {subj.total_mass_kg:.2f}")
-    print(f"  torso_mass_kg: {torso_mass:.2f}")
-    print(f"  impact_velocity_mps: {v0_mps}")
-    print(f"  calib_floors: {calib_floors}")
-    print(f"  limit_bounds_mm: [{limit_bounds[0]}, {limit_bounds[1]}]")
-    print(f"\n  Optimizer: success={out.success}, cost={out.cost:.6f}, "
-          f"residual_norm={np.linalg.norm(out.fun):.6f}, nfev={out.nfev}")
+    print('\n=== CALIBRATION RESULT (TOEN surrogate) ===')
+    print('  targets: avg paper')
+    print(f'  body_mass_kg: {body_mass:.2f}, skin_mass_kg: {skin_mass:.3f}')
+    print(f'  impact_velocity_mps: {v0_mps}')
+    print(f'  calib_floors: {calib_floors}')
+    print(f'  limit_bounds_mm: [{bounds_limit_mm[0]}, {bounds_limit_mm[1]}]')
+    print(
+        f'\n  Optimizer: success={out.success}, cost={out.cost:.6f}, '
+        f'residual_norm={np.linalg.norm(out.fun):.6f}, nfev={out.nfev}'
+    )
 
-    # Return only essential calibration parameters
     return {
-        "buttocks_k_n_per_m": float(k_butt),
-        "buttocks_c_ns_per_m": float(c_butt),
-        "buttocks_limit_mm": float(limit_mm),
-        "buttocks_stop_k_n_per_m": float(buttocks_stop_k_n_per_m),
-        "buttocks_stop_smoothing_mm": float(buttocks_stop_smoothing_mm),
+        'buttocks_k_n_per_m': float(k_butt),
+        'buttocks_c_ns_per_m': float(c_butt),
+        'buttocks_limit_mm': float(limit_mm),
+        'buttocks_stop_k_n_per_m': float(buttocks_stop_k_n_per_m),
+        'buttocks_stop_smoothing_mm': float(buttocks_stop_smoothing_mm),
     }
