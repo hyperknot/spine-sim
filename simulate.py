@@ -38,10 +38,16 @@ def simulate_buttocks():
     run_simulate_buttocks(echo=click.echo)
 
 
-@cli.command("calibrate-drop")
-def calibrate_drop():
-    """Calibrate spine model against Yoganandan data (uses Toen buttocks)."""
-    run_calibrate_drop(echo=click.echo)
+@cli.command("calibrate-drop-peaks")
+def calibrate_drop_peaks():
+    """Calibrate spine stiffness scales to Yoganandan peak forces."""
+    run_calibrate_drop(echo=click.echo, mode="peaks")
+
+
+@cli.command("calibrate-drop-curves")
+def calibrate_drop_curves():
+    """Calibrate spine model to Yoganandan force-time curves."""
+    run_calibrate_drop(echo=click.echo, mode="curves")
 
 
 @cli.command("simulate-drop")

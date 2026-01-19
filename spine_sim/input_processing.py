@@ -62,6 +62,10 @@ def process_input(
     total_ms = float((t_all[-1] - t_all[0]) * 1000.0) if t_all.size >= 2 else 0.0
     style = detect_style(total_ms, style_threshold_ms)
 
+    # Store raw min/max for debug output
+    raw_min_g = float(np.min(accel_raw))
+    raw_max_g = float(np.max(accel_raw))
+
     if style == "flat":
         t_seg, a_seg = t_all - t_all[0], accel_filtered.copy()
         desired_n = int(round((sim_duration_ms / 1000.0) / dt)) + 1
@@ -70,7 +74,8 @@ def process_input(
             t_seg = np.concatenate([t_seg, t_seg[-1] + dt * (np.arange(pad_n) + 1)])
             a_seg = np.concatenate([a_seg, np.zeros(pad_n)])
         return t_seg, a_seg, {"style": "flat", "dt_s": dt, "sample_rate_hz": sample_rate,
-                              "bias_applied": False, "bias_g": 0.0}
+                              "bias_applied": False, "bias_g": 0.0,
+                              "duration_ms": total_ms, "raw_min_g": raw_min_g, "raw_max_g": raw_max_g}
 
     hit = find_hit_range(accel_filtered.tolist(), peak_threshold_g, freefall_threshold_g)
     start_idx = hit.start_idx if hit else 0
@@ -87,4 +92,5 @@ def process_input(
         a_seg = np.concatenate([a_seg, -1.0 * np.ones(pad_n)])
 
     return t_seg, a_seg, {"style": "drop", "dt_s": dt, "sample_rate_hz": sample_rate,
-                          "bias_applied": applied, "bias_g": bias}
+                          "bias_applied": applied, "bias_g": bias,
+                          "duration_ms": total_ms, "raw_min_g": raw_min_g, "raw_max_g": raw_max_g}
