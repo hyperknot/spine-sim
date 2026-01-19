@@ -42,6 +42,11 @@ def run_calibrate_buttocks(echo=print) -> dict:
 
     This is a separate mode used for validating the buttocks surrogate only.
     Drop calibration/simulation does NOT use this file.
+
+    Parameters can be disabled by:
+    - Prefixing the key with '_' in config bounds
+    - Omitting the key from config bounds
+    - Setting identical bounds [x, x]
     """
     config = read_config()
 
@@ -49,14 +54,44 @@ def run_calibrate_buttocks(echo=print) -> dict:
     init_c = float(_require_path(config, 'buttock.calibration.init.c_ns_per_m'))
     init_limit = float(_require_path(config, 'buttock.calibration.init.limit_mm'))
 
-    b0, b1 = _require_path(config, 'buttock.calibration.bounds.k_n_per_m')
-    c0, c1 = _require_path(config, 'buttock.calibration.bounds.c_ns_per_m')
-    l0, l1 = _require_path(config, 'buttock.calibration.bounds.limit_mm')
+    # Read bounds from config, handling disabled parameters
+    bounds_config = _require_path(config, 'buttock.calibration.bounds')
+    if not isinstance(bounds_config, dict):
+        raise ValueError('buttock.calibration.bounds must be an object/dict.')
+
+    def _get_bounds(key: str) -> tuple[float, float] | None:
+        """Get bounds for a parameter. Returns None if disabled (missing, prefixed with _, or identical)."""
+        # Check if key is disabled by underscore prefix
+        if f'_{key}' in bounds_config:
+            return None
+        # Check if key exists
+        if key not in bounds_config:
+            return None
+        # Get bounds
+        lo, hi = bounds_config[key]
+        lo, hi = float(lo), float(hi)
+        # Check if disabled by identical bounds
+        if abs(hi - lo) <= 0.0:
+            return None
+        return (lo, hi)
+
+    bounds_k = _get_bounds('k_n_per_m')
+    bounds_c = _get_bounds('c_ns_per_m')
+    bounds_limit = _get_bounds('limit_mm')
 
     stop_k = float(_require_path(config, 'buttock.densification.stop_k_n_per_m'))
     smooth_mm = float(_require_path(config, 'buttock.densification.stop_smoothing_mm'))
 
     echo('Calibrating buttocks model (Toen surrogate).')
+    disabled = []
+    if bounds_k is None:
+        disabled.append('k_n_per_m')
+    if bounds_c is None:
+        disabled.append('c_ns_per_m')
+    if bounds_limit is None:
+        disabled.append('limit_mm')
+    if disabled:
+        echo(f'  Disabled parameters (using init values): {disabled}')
 
     result = calibrate_toen_buttocks_model(
         buttocks_stop_k_n_per_m=stop_k,
@@ -64,9 +99,9 @@ def run_calibrate_buttocks(echo=print) -> dict:
         init_k_n_per_m=init_k,
         init_c_ns_per_m=init_c,
         init_limit_mm=init_limit,
-        bounds_k_n_per_m=(float(b0), float(b1)),
-        bounds_c_ns_per_m=(float(c0), float(c1)),
-        bounds_limit_mm=(float(l0), float(l1)),
+        bounds_k_n_per_m=bounds_k,
+        bounds_c_ns_per_m=bounds_c,
+        bounds_limit_mm=bounds_limit,
     )
 
     out_path = write_toen_drop_calibration(result)

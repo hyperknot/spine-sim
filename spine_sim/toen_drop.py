@@ -370,9 +370,9 @@ def calibrate_toen_buttocks_model(
     init_k_n_per_m: float,
     init_c_ns_per_m: float,
     init_limit_mm: float,
-    bounds_k_n_per_m: tuple[float, float],
-    bounds_c_ns_per_m: tuple[float, float],
-    bounds_limit_mm: tuple[float, float],
+    bounds_k_n_per_m: tuple[float, float] | None,
+    bounds_c_ns_per_m: tuple[float, float] | None,
+    bounds_limit_mm: tuple[float, float] | None,
     debug_every: int = 5,
 ) -> dict:
     """
@@ -383,6 +383,7 @@ def calibrate_toen_buttocks_model(
       - calib floors: firm_95 + rigid_400
 
     Bounds/initial values are supplied by caller (config.json).
+    Bounds can be None to disable optimization of that parameter (use init value).
     """
     v0_mps = TOEN_IMPACT_V_MPS
     calib_floors = list(TOEN_CALIB_FLOORS)
@@ -391,22 +392,65 @@ def calibrate_toen_buttocks_model(
     skin_mass = TOEN_TABLE1_SKIN_MASS_KG
     body_mass = TOEN_TABLE1_BODY_MASS_KG
 
-    x0 = np.log(np.array([init_k_n_per_m, init_c_ns_per_m, init_limit_mm], dtype=float))
+    # Build parameter vectors, including only enabled parameters
+    param_names = []
+    init_vals = []
+    lb_vals = []
+    ub_vals = []
+    fixed_vals = {}
 
-    lb = np.log(
-        np.array([bounds_k_n_per_m[0], bounds_c_ns_per_m[0], bounds_limit_mm[0]], dtype=float)
-    )
-    ub = np.log(
-        np.array([bounds_k_n_per_m[1], bounds_c_ns_per_m[1], bounds_limit_mm[1]], dtype=float)
-    )
+    if bounds_k_n_per_m is not None:
+        param_names.append('k')
+        init_vals.append(init_k_n_per_m)
+        lb_vals.append(bounds_k_n_per_m[0])
+        ub_vals.append(bounds_k_n_per_m[1])
+    else:
+        fixed_vals['k'] = init_k_n_per_m
+
+    if bounds_c_ns_per_m is not None:
+        param_names.append('c')
+        init_vals.append(init_c_ns_per_m)
+        lb_vals.append(bounds_c_ns_per_m[0])
+        ub_vals.append(bounds_c_ns_per_m[1])
+    else:
+        fixed_vals['c'] = init_c_ns_per_m
+
+    if bounds_limit_mm is not None:
+        param_names.append('limit')
+        init_vals.append(init_limit_mm)
+        lb_vals.append(bounds_limit_mm[0])
+        ub_vals.append(bounds_limit_mm[1])
+    else:
+        fixed_vals['limit'] = init_limit_mm
+
+    if len(param_names) == 0:
+        # All parameters disabled, nothing to optimize
+        print('  All parameters disabled. Using init values.')
+        return {
+            'buttocks_k_n_per_m': float(init_k_n_per_m),
+            'buttocks_c_ns_per_m': float(init_c_ns_per_m),
+            'buttocks_limit_mm': float(init_limit_mm),
+            'buttocks_stop_k_n_per_m': float(buttocks_stop_k_n_per_m),
+            'buttocks_stop_smoothing_mm': float(buttocks_stop_smoothing_mm),
+        }
+
+    x0 = np.log(np.array(init_vals, dtype=float))
+    lb = np.log(np.array(lb_vals, dtype=float))
+    ub = np.log(np.array(ub_vals, dtype=float))
 
     eval_counter = {'n': 0}
 
     def residuals(logx: np.ndarray) -> np.ndarray:
         eval_counter['n'] += 1
-        k_butt = float(np.exp(logx[0]))
-        c_butt = float(np.exp(logx[1]))
-        limit_mm = float(np.exp(logx[2]))
+        # Extract optimized parameters from logx
+        x_phys = np.exp(logx)
+        params = dict(fixed_vals)
+        for i, name in enumerate(param_names):
+            params[name] = float(x_phys[i])
+
+        k_butt = params['k']
+        c_butt = params['c']
+        limit_mm = params['limit']
 
         res = []
         for floor_name in calib_floors:
@@ -461,16 +505,25 @@ def calibrate_toen_buttocks_model(
 
     out = least_squares(residuals, x0, bounds=(lb, ub), max_nfev=60, verbose=2)
 
-    k_butt = float(np.exp(out.x[0]))
-    c_butt = float(np.exp(out.x[1]))
-    limit_mm = float(np.exp(out.x[2]))
+    # Extract final optimized parameters
+    x_phys_final = np.exp(out.x)
+    final_params = dict(fixed_vals)
+    for i, name in enumerate(param_names):
+        final_params[name] = float(x_phys_final[i])
+
+    k_butt = final_params['k']
+    c_butt = final_params['c']
+    limit_mm = final_params['limit']
 
     print('\n=== CALIBRATION RESULT (TOEN surrogate) ===')
     print('  targets: avg paper')
     print(f'  body_mass_kg: {body_mass:.2f}, skin_mass_kg: {skin_mass:.3f}')
     print(f'  impact_velocity_mps: {v0_mps}')
     print(f'  calib_floors: {calib_floors}')
-    print(f'  limit_bounds_mm: [{bounds_limit_mm[0]}, {bounds_limit_mm[1]}]')
+    print(f'  Optimized parameters: {param_names}')
+    print(f'  Fixed parameters: {list(fixed_vals.keys())}')
+    if bounds_limit_mm is not None:
+        print(f'  limit_bounds_mm: [{bounds_limit_mm[0]}, {bounds_limit_mm[1]}]')
     print(
         f'\n  Optimizer: success={out.success}, cost={out.cost:.6f}, '
         f'residual_norm={np.linalg.norm(out.fun):.6f}, nfev={out.nfev}'
