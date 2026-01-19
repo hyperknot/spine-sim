@@ -2,18 +2,18 @@
   "model": "zwt",
   "active_mode": "peaks",
   "peaks": {
-    "s_k_spine": 1.7605180271263017,
-    "s_c_spine": 1.2397076999389867,
-    "buttocks_k_n_per_m": 90249.99999999993,
-    "buttocks_c_ns_per_m": 4731.057375629792,
-    "buttocks_limit_mm": 64.64102319208033,
+    "s_k_spine": 1.4742692172911012,
+    "s_c_spine": 0.9713074955416333,
+    "buttocks_k_n_per_m": 168309.91950988793,
+    "buttocks_c_ns_per_m": 3973.525071325699,
+    "buttocks_limit_mm": 49.34700412274784,
     "c_base_ns_per_m": 1200.0,
     "disc_poly_k2_n_per_m2": 0.0,
     "disc_poly_k3_n_per_m3": 0.0,
     "maxwell_k_ratio_0": 1.0,
     "maxwell_k_ratio_1": 0.5,
-    "maxwell_tau_ms_0": 10.000000000000002,
-    "maxwell_tau_ms_1": 119.99999999999997
+    "maxwell_tau_ms_0": 18.686546937663607,
+    "maxwell_tau_ms_1": 70.66336737569887
   },
   "curves": {
     "s_k_spine": 1.0,
