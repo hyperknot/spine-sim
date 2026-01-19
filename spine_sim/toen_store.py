@@ -16,6 +16,21 @@ def load_toen_drop_calibration() -> tuple[dict | None, Path]:
     return doc, TOEN_DROP_FILE
 
 
+def require_toen_drop_calibration() -> tuple[dict, Path]:
+    """
+    Load calibration and fail loudly if it doesn't exist.
+
+    This enforces: run calibration first, then simulate.
+    """
+    doc, path = load_toen_drop_calibration()
+    if doc is None:
+        raise FileNotFoundError(
+            f"Missing Toen drop calibration: {path}\n"
+            "Run the buttocks calibration command first."
+        )
+    return doc, path
+
+
 def write_toen_drop_calibration(params: dict) -> Path:
     """Write buttocks calibration parameters directly to file."""
     TOEN_DROP_FILE.parent.mkdir(parents=True, exist_ok=True)

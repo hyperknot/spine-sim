@@ -8,22 +8,27 @@ import numpy as np
 
 from spine_sim.model import SpineModel
 from spine_sim.plotting import plot_toen_buttocks_force_compression
-from spine_sim.toen_drop import simulate_toen_drop_trace
-from spine_sim.toen_store import load_toen_drop_calibration
-from spine_sim.toen_subjects import TOEN_SUBJECTS, subject_buttocks_kc, toen_torso_mass_scaled_kg
+from spine_sim.toen_drop import (
+    TOEN_IMPACT_V_MPS,
+    TOEN_SOLVER_DT_S,
+    TOEN_SOLVER_DURATION_S,
+    TOEN_SOLVER_MAX_NEWTON_ITER,
+    simulate_toen_drop_trace,
+)
+from spine_sim.toen_store import require_toen_drop_calibration
+from spine_sim.toen_subjects import TOEN_SUBJECTS, toen_torso_mass_scaled_kg
 from spine_sim.toen_targets import TOEN_FLOOR_STIFFNESS_N_PER_M
 
+# ----------------------------
+# Hard-coded run settings
+# ----------------------------
+TOEN_SUBJECT_ID = "avg"
+MALE50_MASS_KG = 75.4
 
-def get_toen_buttocks_params(config: dict) -> dict | None:
-    """Load Toen calibration if available."""
-    bcfg = config.get("buttock", {})
 
-    if not bcfg.get("use_saved_calibration", True):
-        return None
-
-    doc, _path = load_toen_drop_calibration()
-    if doc is None:
-        return None
+def get_toen_buttocks_params() -> dict:
+    """Load Toen calibration. Fails if missing (calibration is required)."""
+    doc, path = require_toen_drop_calibration()
 
     return {
         "k": doc.get("buttocks_k_n_per_m"),
@@ -31,6 +36,7 @@ def get_toen_buttocks_params(config: dict) -> dict | None:
         "limit_mm": doc.get("buttocks_limit_mm"),
         "stop_k": doc.get("buttocks_stop_k_n_per_m"),
         "smoothing_mm": doc.get("buttocks_stop_smoothing_mm"),
+        "_path": str(path),
     }
 
 
@@ -119,18 +125,22 @@ def compute_free_buttocks_height_mm(toen_params: dict | None) -> float:
 
 
 def generate_buttocks_plot(
-    config: dict, out_dir: Path, v_plot: float, subject: str, target_set: str,
-    male50: float, butt_k: float | None, butt_c: float | None, butt_limit_mm: float,
-    butt_stop_k: float, butt_smooth_mm: float, dt_s: float, duration_s: float,
-    max_newton_iter: int,
+    out_dir: Path,
+    v_plot: float,
+    buttocks_params: dict,
+    dt_s: float = TOEN_SOLVER_DT_S,
+    duration_s: float = TOEN_SOLVER_DURATION_S,
+    max_newton_iter: int = TOEN_SOLVER_MAX_NEWTON_ITER,
 ) -> Path:
     """Generate buttocks force/compression plot for a velocity."""
-    subj = TOEN_SUBJECTS[subject]
-    torso_mass = toen_torso_mass_scaled_kg(subj.total_mass_kg, male50_mass_kg=male50)
+    subj = TOEN_SUBJECTS[TOEN_SUBJECT_ID]
+    torso_mass = toen_torso_mass_scaled_kg(subj.total_mass_kg, male50_mass_kg=MALE50_MASS_KG)
 
-    k_subj, c_subj = subject_buttocks_kc(subject)
-    k_butt = float(k_subj if butt_k is None else butt_k)
-    c_butt = float(c_subj if butt_c is None else butt_c)
+    k_butt = float(buttocks_params["k"])
+    c_butt = float(buttocks_params["c"])
+    limit_mm = float(buttocks_params["limit_mm"])
+    stop_k = float(buttocks_params["stop_k"])
+    smoothing_mm = float(buttocks_params["smoothing_mm"])
 
     compression_by_floor: dict[str, np.ndarray] = {}
     force_by_floor: dict[str, np.ndarray] = {}
@@ -138,12 +148,18 @@ def generate_buttocks_plot(
 
     for floor_name, k_floor in TOEN_FLOOR_STIFFNESS_N_PER_M.items():
         _res, trace = simulate_toen_drop_trace(
-            floor_name=floor_name, body_mass_kg=torso_mass,
-            buttocks_k_n_per_m=k_butt, buttocks_c_ns_per_m=c_butt,
-            floor_k_n_per_m=float(k_floor), impact_velocity_mps=v_plot,
-            buttocks_limit_mm=butt_limit_mm, buttocks_stop_k_n_per_m=butt_stop_k,
-            buttocks_stop_smoothing_mm=butt_smooth_mm,
-            dt_s=dt_s, duration_s=duration_s, max_newton_iter=max_newton_iter,
+            floor_name=floor_name,
+            body_mass_kg=torso_mass,
+            buttocks_k_n_per_m=k_butt,
+            buttocks_c_ns_per_m=c_butt,
+            floor_k_n_per_m=float(k_floor),
+            impact_velocity_mps=v_plot,
+            buttocks_limit_mm=limit_mm,
+            buttocks_stop_k_n_per_m=stop_k,
+            buttocks_stop_smoothing_mm=smoothing_mm,
+            dt_s=dt_s,
+            duration_s=duration_s,
+            max_newton_iter=max_newton_iter,
         )
         if time_s is None:
             time_s = trace.time_s
@@ -152,8 +168,10 @@ def generate_buttocks_plot(
 
     out_path = out_dir / f"buttocks_force_compression_v{v_plot:.2f}.png"
     plot_toen_buttocks_force_compression(
-        time_s, compression_by_floor_mm=compression_by_floor,
-        force_by_floor_kN=force_by_floor, out_path=out_path,
-        title=f"Toen buttocks response (subject={subject}, target_set={target_set}, v={v_plot:.2f} m/s)",
+        time_s,
+        compression_by_floor_mm=compression_by_floor,
+        force_by_floor_kN=force_by_floor,
+        out_path=out_path,
+        title=f"Toen buttocks response (subject=avg, v={v_plot:.2f} m/s)",
     )
     return out_path

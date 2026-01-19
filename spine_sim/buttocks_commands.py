@@ -3,39 +3,48 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from spine_sim.buttocks import generate_buttocks_plot
-from spine_sim.config import read_config, resolve_path
+from spine_sim.config import read_config
 from spine_sim.toen_drop import (
     TOEN_IMPACT_V_MPS,
+    TOEN_SOLVER_DT_S,
+    TOEN_SOLVER_DURATION_S,
+    TOEN_SOLVER_MAX_NEWTON_ITER,
     calibrate_toen_buttocks_model,
     run_toen_suite,
 )
-from spine_sim.toen_store import load_toen_drop_calibration, write_toen_drop_calibration
+from spine_sim.toen_store import require_toen_drop_calibration, write_toen_drop_calibration
+
+# ----------------------------
+# Hard-coded run settings
+# ----------------------------
+OUTPUT_DIR = Path("output/toen_drop")
+
+MALE50_MASS_KG = 75.4
+
+# Densification/stop settings are not in config anymore.
+# They are used during calibration and saved into the calibration file.
+BUTTOCKS_STOP_K_N_PER_M = 5.0e6
+BUTTOCKS_STOP_SMOOTHING_MM = 1.0
+
+# Hard-coded solver parameters (simulation uses these).
+DT_S = TOEN_SOLVER_DT_S
+DURATION_S = TOEN_SOLVER_DURATION_S
+MAX_NEWTON_ITER = TOEN_SOLVER_MAX_NEWTON_ITER
+
+DEFAULT_VELOCITIES_MPS = [TOEN_IMPACT_V_MPS]
 
 
 def run_calibrate_buttocks(echo=print) -> dict:
-    """Calibrate buttocks model from Toen 2012 paper data."""
-    config = read_config()
-    bcfg = config.get("buttock", {})
+    """Calibrate buttocks model from Toen 2012 paper data and save to calibration/toen_drop.json."""
+    echo("Calibrating buttocks model (fixed: subject=avg, targets=avg paper, v=3.5 m/s).")
 
-    subject = str(bcfg.get("subject", "avg")).lower()
-    if subject == "both":
-        subject = "avg"
-
-    target_set = str(bcfg.get("target_set", "avg")).lower()
-    if target_set == "fig3":
-        target_set = "subj3"
-
-    dens = bcfg.get("densification", {}).get("buttocks", {})
-
-    echo(f"Calibrating buttocks model: subject={subject}, target_set={target_set}")
     result = calibrate_toen_buttocks_model(
-        subject_id=subject,
-        target_set=target_set,
-        male50_mass_kg=float(bcfg.get("male50_mass_kg", 75.4)),
-        buttocks_stop_k_n_per_m=float(dens.get("stop_k_n_per_m", 5.0e6)),
-        buttocks_stop_smoothing_mm=float(dens.get("smoothing_mm", 1.0)),
+        male50_mass_kg=MALE50_MASS_KG,
+        buttocks_stop_k_n_per_m=BUTTOCKS_STOP_K_N_PER_M,
+        buttocks_stop_smoothing_mm=BUTTOCKS_STOP_SMOOTHING_MM,
     )
 
     out_path = write_toen_drop_calibration(result)
@@ -44,67 +53,54 @@ def run_calibrate_buttocks(echo=print) -> dict:
 
 
 def run_simulate_buttocks(echo=print) -> list[dict]:
-    """Simulate Toen drop suite and generate plots."""
+    """Simulate Toen drop suite and generate plots. Requires an existing calibration file."""
     config = read_config()
     bcfg = config.get("buttock", {})
 
-    subject = str(bcfg.get("subject", "avg")).lower()
-    target_set = str(bcfg.get("target_set", "avg")).lower()
-    if target_set == "fig3":
-        target_set = "subj3"
+    velocities = [float(v) for v in bcfg.get("velocities_mps", DEFAULT_VELOCITIES_MPS)]
 
-    velocities = [float(v) for v in bcfg.get("velocities_mps", [TOEN_IMPACT_V_MPS])]
-    male50 = float(bcfg.get("male50_mass_kg", 75.4))
+    # Enforce "calibration required"
+    doc, path = require_toen_drop_calibration()
+    echo(f"Loaded calibration from {path}")
 
-    solver = bcfg.get("solver", {})
-    dt_s = float(solver.get("dt_s", 0.0005))
-    duration_s = float(solver.get("duration_s", 0.15))
-    max_newton_iter = int(solver.get("max_newton_iter", 10))
+    buttocks_params = {
+        "k": float(doc["buttocks_k_n_per_m"]),
+        "c": float(doc["buttocks_c_ns_per_m"]),
+        "limit_mm": float(doc["buttocks_limit_mm"]),
+        "stop_k": float(doc["buttocks_stop_k_n_per_m"]),
+        "smoothing_mm": float(doc["buttocks_stop_smoothing_mm"]),
+    }
 
-    dens = bcfg.get("densification", {}).get("buttocks", {})
-    butt_limit_mm = float(dens.get("limit_mm", 39.0))
-    butt_stop_k = float(dens.get("stop_k_n_per_m", 5.0e6))
-    butt_smooth_mm = float(dens.get("smoothing_mm", 1.0))
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load saved calibration if available
-    butt_k, butt_c = None, None
-    if bcfg.get("use_saved_calibration", True):
-        doc, path = load_toen_drop_calibration()
-        if doc is not None:
-            butt_k = doc.get("buttocks_k_n_per_m")
-            butt_c = doc.get("buttocks_c_ns_per_m")
-            butt_limit_mm = float(doc.get("buttocks_limit_mm", butt_limit_mm))
-            butt_stop_k = float(doc.get("buttocks_stop_k_n_per_m", butt_stop_k))
-            butt_smooth_mm = float(doc.get("buttocks_stop_smoothing_mm", butt_smooth_mm))
-            echo(f"Loaded calibration from {path}")
+    echo(f"Simulating (fixed: subject=avg). velocities={velocities}")
 
-    subjects = ["avg", "3"] if subject == "both" else [subject]
-    out_dir = resolve_path(str(bcfg.get("output_dir", "output/toen_drop")))
-    out_dir.mkdir(parents=True, exist_ok=True)
+    results = run_toen_suite(
+        impact_velocities_mps=velocities,
+        male50_mass_kg=MALE50_MASS_KG,
+        dt_s=DT_S,
+        duration_s=DURATION_S,
+        max_newton_iter=MAX_NEWTON_ITER,
+        buttocks_k_n_per_m=buttocks_params["k"],
+        buttocks_c_ns_per_m=buttocks_params["c"],
+        buttocks_limit_mm=buttocks_params["limit_mm"],
+        buttocks_stop_k_n_per_m=buttocks_params["stop_k"],
+        buttocks_stop_smoothing_mm=buttocks_params["smoothing_mm"],
+    )
 
-    echo(f"Simulating: target_set={target_set}, subjects={subjects}, velocities={velocities}")
+    all_results = [r.__dict__ for r in results]
+    (OUTPUT_DIR / "summary.json").write_text(json.dumps(all_results, indent=2) + "\n", encoding="utf-8")
 
-    all_results = []
-    for sid in subjects:
-        results = run_toen_suite(
-            subject_id=sid, target_set=target_set, male50_mass_kg=male50,
-            impact_velocities_mps=velocities, dt_s=dt_s, duration_s=duration_s,
-            max_newton_iter=max_newton_iter, buttocks_k_n_per_m=butt_k,
-            buttocks_c_ns_per_m=butt_c, buttocks_limit_mm=butt_limit_mm,
-            buttocks_stop_k_n_per_m=butt_stop_k, buttocks_stop_smoothing_mm=butt_smooth_mm,
-        )
-        all_results.extend([r.__dict__ for r in results])
-
-    (out_dir / "summary.json").write_text(json.dumps(all_results, indent=2) + "\n", encoding="utf-8")
-
-    # Generate plots for each velocity
     for v_plot in velocities:
         plot_path = generate_buttocks_plot(
-            config, out_dir, v_plot, subject if subject != "both" else "avg",
-            target_set, male50, butt_k, butt_c, butt_limit_mm, butt_stop_k, butt_smooth_mm,
-            dt_s, duration_s, max_newton_iter,
+            OUTPUT_DIR,
+            v_plot=v_plot,
+            buttocks_params=buttocks_params,
+            dt_s=DT_S,
+            duration_s=DURATION_S,
+            max_newton_iter=MAX_NEWTON_ITER,
         )
         echo(f"  Plot: {plot_path}")
 
-    echo(f"Simulation and plots complete. Output: {out_dir}")
+    echo(f"Simulation and plots complete. Output: {OUTPUT_DIR}")
     return all_results

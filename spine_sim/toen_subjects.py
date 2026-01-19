@@ -33,11 +33,11 @@ class ToenSubject:
     subject_id: str
     height_cm: float
     total_mass_kg: float
-    buttocks_k_n_per_m: float | None
-    buttocks_c_ns_per_m: float | None
+    buttocks_k_n_per_m: float
+    buttocks_c_ns_per_m: float
 
 
-# Table 2 (Toen 2012)
+# Table 2 (Toen 2012) - simplified: only keep the avg subject.
 TOEN_SUBJECTS: dict[str, ToenSubject] = {
     'avg': ToenSubject(
         subject_id='avg',
@@ -46,26 +46,9 @@ TOEN_SUBJECTS: dict[str, ToenSubject] = {
         buttocks_k_n_per_m=180_500.0,
         buttocks_c_ns_per_m=3_130.0,
     ),
-    '3': ToenSubject(
-        subject_id='3',
-        height_cm=183.0,
-        total_mass_kg=92.3,
-        buttocks_k_n_per_m=None,
-        buttocks_c_ns_per_m=None,
-    ),
 }
 
-# Across-subject averages for missing k/c (Toen used mean values when missing)
-TOEN_BUTTOCKS_K_MEAN_N_PER_M = 180_500.0
-TOEN_BUTTOCKS_C_MEAN_NS_PER_M = 3_130.0
 
-
-def subject_buttocks_kc(subject_id: str) -> tuple[float, float]:
+def subject_buttocks_kc(subject_id: str = "avg") -> tuple[float, float]:
     s = TOEN_SUBJECTS[subject_id]
-    k = s.buttocks_k_n_per_m if s.buttocks_k_n_per_m is not None else TOEN_BUTTOCKS_K_MEAN_N_PER_M
-    c = (
-        s.buttocks_c_ns_per_m
-        if s.buttocks_c_ns_per_m is not None
-        else TOEN_BUTTOCKS_C_MEAN_NS_PER_M
-    )
-    return float(k), float(c)
+    return float(s.buttocks_k_n_per_m), float(s.buttocks_c_ns_per_m)

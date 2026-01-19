@@ -24,28 +24,7 @@
   },
 
   "buttock": {
-    "output_dir": "output/toen_drop",
-
-    "subject": "avg",
-    "target_set": "avg",
-    "male50_mass_kg": 75.4,
-
-    "velocities_mps": [3.5, 8.0],
-    "use_saved_calibration": true,
-
-    "solver": {
-      "dt_s": 0.0005,
-      "duration_s": 0.15,
-      "max_newton_iter": 10
-    },
-
-    "densification": {
-      "buttocks": {
-        "limit_mm": 39.0,
-        "stop_k_n_per_m": 5000000.0,
-        "smoothing_mm": 1.0
-      }
-    }
+    "velocities_mps": [3.5, 8.0]
   },
 
   "maxwell": {
