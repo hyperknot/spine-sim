@@ -336,14 +336,13 @@ def calibrate_model_peaks_joint(
         # Evaluation key is exact-to-snap (no extra binning) so we don't “reuse wrong physics”.
         return x_int_full_snapped.astype(np.float64).tobytes()
 
-    def _get_model(x_int_full_snapped: np.ndarray) -> SpineModel:
-        mkey = _model_key(x_int_full_snapped)
-        model = _lru_get(model_cache, mkey)
+    def _get_model(ekey: bytes, x_int_full_snapped: np.ndarray) -> SpineModel:
+        model = _lru_get(model_cache, ekey)
         if model is not None:
             return model
         p = _params_dict_from_int_full(x_int_full_snapped)
         model = apply_params(base_model, p)
-        _lru_put(model_cache, mkey, model, max_model_cache)
+        _lru_put(model_cache, ekey, model, max_model_cache)
         return model
 
     def _evaluate_all_cases(
@@ -362,7 +361,7 @@ def calibrate_model_peaks_joint(
         x_int_full_snapped = _snap_int_full(x_int_full_raw, snap_step)
         ekey = _eval_key(x_int_full_snapped)
 
-        model = _get_model(x_int_full_snapped)
+        model = _get_model(ekey, x_int_full_snapped)
         p = _params_dict_from_int_full(x_int_full_snapped)
 
         if stage == 'explore':
@@ -615,6 +614,8 @@ def calibrate_model_peaks_joint(
             print(f'  seed params: {_format_param_line(p_seed, enabled_keys)}')
             print(f'  refine snap step: {snap_norm_step_refine}')
 
+        min_evals_before_stall = 2 * x0.size + 5  # safe buffer for FD probing
+
         def residuals(x_var: np.ndarray) -> np.ndarray:
             nonlocal \
                 eval_count, \
@@ -670,20 +671,23 @@ def calibrate_model_peaks_joint(
                 f'refine_peak_cache={len(refine_peak_cache)} refine_settle_cache={len(refine_settle_cache)}'
             )
 
-            if stall_count >= stall_iters:
+            if eval_count >= min_evals_before_stall and stall_count >= stall_iters:
                 raise EarlyStopException
 
             return res
 
         try:
+            diff_step = 0.005 * (ub - lb)
+            diff_step = np.clip(diff_step, 1e-8, None)
+
             out = least_squares(
                 residuals,
                 x0,
                 bounds=(lb, ub),
+                diff_step=diff_step,
                 max_nfev=max_nfev,
                 verbose=0,
             )
-
             x_full = x0_int_full.copy()
             x_full[enabled_idx] = out.x
 
