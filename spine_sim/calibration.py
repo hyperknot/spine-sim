@@ -167,6 +167,7 @@ def calibrate_model_peaks_joint(
     enabled_mask = (hi_phys - lo_phys) > 0.0
     enabled_idx = np.nonzero(enabled_mask)[0]
     fixed_idx = np.nonzero(~enabled_mask)[0]
+    enabled_keys = [all_keys[i] for i in enabled_idx]
 
     def _internal_from_phys(x_phys_full: np.ndarray) -> np.ndarray:
         x_int = x_phys_full.copy()
@@ -252,7 +253,7 @@ def calibrate_model_peaks_joint(
 
         if verbose:
             print('=== Peak calibration (nothing enabled) ===')
-            print(f'  Params: {_format_param_line(p, base_keys)}')
+            print(f'  Params: {_format_param_line(p, all_keys)}')
             print('  Residuals per case:')
             _print_case_details(details)
             print(f'  Cost: {float(np.sum(res**2)):.6f}')
@@ -440,7 +441,6 @@ def calibrate_model_peaks_joint(
     # Debug header
     # -------------------------
     if verbose:
-        enabled_keys = [all_keys[i] for i in enabled_idx]
         fixed_keys = [all_keys[i] for i in fixed_idx]
         print('=== Peak calibration setup ===')
         print(f'  total params: {len(all_keys)}')
@@ -503,7 +503,7 @@ def calibrate_model_peaks_joint(
 
     if verbose:
         print(f'[explore] 0/{explore_samples} cost={cost0:.6f} best={best_cost:.6f}')
-        print(f'  baseline params: {_format_param_line(p0, base_keys)}')
+        print(f'  baseline params: {_format_param_line(p0, enabled_keys)}')
         print('  baseline residuals:')
         _print_case_details(det0)
 
@@ -535,7 +535,7 @@ def calibrate_model_peaks_joint(
             f'[explore] {i}/{explore_samples} mode={mode} cost={cost:.6f} best={best_cost:.6f} '
             f'{"IMPROVED" if improved else ""}'.rstrip()
         )
-        print(f'  params: {_format_param_line(p, base_keys)}')
+        print(f'  params: {_format_param_line(p, enabled_keys)}')
         print('  residuals:')
         _print_case_details(details)
 
@@ -550,7 +550,7 @@ def calibrate_model_peaks_joint(
             )
             print('  ----')
             print(f'  NEW BEST cost={cost_b:.6f}')
-            print(f'  NEW BEST params: {_format_param_line(p_b, base_keys)}')
+            print(f'  NEW BEST params: {_format_param_line(p_b, enabled_keys)}')
             print('  NEW BEST residuals:')
             _print_case_details(det_b)
 
@@ -586,7 +586,7 @@ def calibrate_model_peaks_joint(
         print(
             f'[seeds] pool_n={len(pool)}, selected_seeds={len(seeds_full)} (requested n_starts={n_starts})'
         )
-        print(f'[seeds] best explore params: {_format_param_line(best_p, base_keys)}')
+        print(f'[seeds] best explore params: {_format_param_line(best_p, enabled_keys)}')
         print(f'[seeds] best explore cost: {pool[0][0]:.6f}')
 
     # -------------------------
@@ -612,7 +612,7 @@ def calibrate_model_peaks_joint(
         if verbose:
             p_seed = _params_dict_from_int_full(_snap_int_full(x_seed_full, snap_norm_step_refine))
             print(f'\n=== Refinement start {start_i + 1}/{len(seeds_full)} ===')
-            print(f'  seed params: {_format_param_line(p_seed, base_keys)}')
+            print(f'  seed params: {_format_param_line(p_seed, enabled_keys)}')
             print(f'  refine snap step: {snap_norm_step_refine}')
 
         def residuals(x_var: np.ndarray) -> np.ndarray:
@@ -657,7 +657,7 @@ def calibrate_model_peaks_joint(
             print(
                 f'\n--- Start {start_i + 1}, Eval {eval_count} (unique_keys={unique_key_count}) ---'
             )
-            print(f'  Params: {_format_param_line(p, base_keys)}')
+            print(f'  Params: {_format_param_line(p, enabled_keys)}')
             print('  Residuals per case:')
             _print_case_details(details)
             if new_key:
@@ -734,7 +734,7 @@ def calibrate_model_peaks_joint(
         if verbose:
             print(f'\n=== Refinement end {start_i + 1}/{len(seeds_full)} ===')
             print(f'  best cost so far = {best_result.cost:.6f}')
-            print(f'  best params so far: {_format_param_line(best_result.params, base_keys)}')
+            print(f'  best params so far: {_format_param_line(best_result.params, enabled_keys)}')
 
     if best_result is None:
         raise RuntimeError('Calibration failed to produce any result.')
