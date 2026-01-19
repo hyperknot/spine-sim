@@ -232,14 +232,18 @@ def _build_joint_bounds(config: dict, model_type: str) -> dict[str, tuple[float,
     if 'maxwell_k_ratios' in model_bounds:
         pairs = model_bounds['maxwell_k_ratios']
         if not isinstance(pairs, list):
-            raise ValueError(f'config.{model_type}.calibration.bounds.maxwell_k_ratios must be a list.')
+            raise ValueError(
+                f'config.{model_type}.calibration.bounds.maxwell_k_ratios must be a list.'
+            )
         for b, pair in enumerate(pairs):
             bounds[f'maxwell_k_ratio_{b}'] = (float(pair[0]), float(pair[1]))
 
     if 'maxwell_tau_ms' in model_bounds:
         pairs = model_bounds['maxwell_tau_ms']
         if not isinstance(pairs, list):
-            raise ValueError(f'config.{model_type}.calibration.bounds.maxwell_tau_ms must be a list.')
+            raise ValueError(
+                f'config.{model_type}.calibration.bounds.maxwell_tau_ms must be a list.'
+            )
         for b, pair in enumerate(pairs):
             bounds[f'maxwell_tau_ms_{b}'] = (float(pair[0]), float(pair[1]))
 

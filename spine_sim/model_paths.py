@@ -242,10 +242,14 @@ def apply_calibration(base_model: SpineModel, params: dict) -> SpineModel:
             ref_idx = base_model.element_names.index('T9-T10')
             c_base_init = float(base_model.c_elem[ref_idx])
         except ValueError:
-            c_base_init = float(np.median(base_model.c_elem[1:][base_model.c_elem[1:] > 0.0])) if n_elem > 1 else 0.0
+            c_base_init = (
+                float(np.median(base_model.c_elem[1:][base_model.c_elem[1:] > 0.0]))
+                if n_elem > 1
+                else 0.0
+            )
 
         if c_base_init > 0.0 and n_elem > 1:
-            c[1:] *= (c_base_new / c_base_init)
+            c[1:] *= c_base_new / c_base_init
 
     # Buttocks absolute
     k[0] = butt_k
