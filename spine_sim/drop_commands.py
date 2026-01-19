@@ -19,12 +19,16 @@ from spine_sim.calibration_targets import CALIBRATION_T12L1_PEAKS_KN, get_case_n
 from spine_sim.config import (
     CALIBRATION_ROOT,
     CALIBRATION_YOGANANDAN_DIR,
+    DEFAULT_DROP_INPUTS_DIR,
+    DEFAULT_DROP_OUTPUT_DIR,
+    DEFAULT_DROP_PATTERN,
     DEFAULT_MASSES_JSON,
     load_masses,
     read_config,
     resolve_path,
 )
-from spine_sim.input_processing import process_input
+from spine_sim.input_processing import DEFAULT_DROP_BASELINE_CORRECTION, process_input
+from spine_sim.range import DEFAULT_FREEFALL_THRESHOLD_G, DEFAULT_PEAK_THRESHOLD_G
 from spine_sim.io import parse_csv_series, resample_to_uniform
 from spine_sim.mass import build_mass_map
 from spine_sim.model import newmark_nonlinear
@@ -270,9 +274,9 @@ def _process_input_verbose(
         cfc=float(drop_cfg.get("cfc", 75)),
         sim_duration_ms=float(drop_cfg.get("sim_duration_ms", 200.0)),
         style_threshold_ms=float(drop_cfg.get("style_duration_threshold_ms", 300.0)),
-        peak_threshold_g=float(drop_cfg.get("peak_threshold_g", 5.0)),
-        freefall_threshold_g=float(drop_cfg.get("freefall_threshold_g", -0.85)),
-        drop_baseline_correction=bool(drop_cfg.get("drop_baseline_correction", True)),
+        peak_threshold_g=float(drop_cfg.get("peak_threshold_g", DEFAULT_PEAK_THRESHOLD_G)),
+        freefall_threshold_g=float(drop_cfg.get("freefall_threshold_g", DEFAULT_FREEFALL_THRESHOLD_G)),
+        drop_baseline_correction=bool(drop_cfg.get("drop_baseline_correction", DEFAULT_DROP_BASELINE_CORRECTION)),
     )
 
     echo(f"    DEBUG: total_duration = {info['duration_ms']:.1f} ms -> style = {info['style']}")
@@ -320,9 +324,9 @@ def _run_simulation_batch(
             cfc=float(drop_cfg.get("cfc", 75)),
             sim_duration_ms=float(drop_cfg.get("sim_duration_ms", 200.0)),
             style_threshold_ms=float(drop_cfg.get("style_duration_threshold_ms", 300.0)),
-            peak_threshold_g=float(drop_cfg.get("peak_threshold_g", 5.0)),
-            freefall_threshold_g=float(drop_cfg.get("freefall_threshold_g", -0.85)),
-            drop_baseline_correction=bool(drop_cfg.get("drop_baseline_correction", True)),
+            peak_threshold_g=float(drop_cfg.get("peak_threshold_g", DEFAULT_PEAK_THRESHOLD_G)),
+            freefall_threshold_g=float(drop_cfg.get("freefall_threshold_g", DEFAULT_FREEFALL_THRESHOLD_G)),
+            drop_baseline_correction=bool(drop_cfg.get("drop_baseline_correction", DEFAULT_DROP_BASELINE_CORRECTION)),
         )
 
         echo(f"    DEBUG: total_duration = {info['duration_ms']:.1f} ms -> style = {info['style']}")
@@ -621,7 +625,7 @@ def run_calibrate_drop(echo=print, mode: str = "peaks") -> dict:
 
         # Apply calibration for simulation
         calibrated_model = model_path.apply_calibration(base_model, result.scales)
-        calibration_out_dir = resolve_path(str(drop_cfg.get("output_dir", "output/drop"))).parent / f"calibration_{model_type}_curves"
+        calibration_out_dir = resolve_path(str(drop_cfg.get("output_dir", str(DEFAULT_DROP_OUTPUT_DIR)))).parent / f"calibration_{model_type}_curves"
 
     else:
         # Peak calibration (default)
@@ -639,9 +643,9 @@ def run_calibrate_drop(echo=print, mode: str = "peaks") -> dict:
                 cfc=float(drop_cfg.get("cfc", 75)),
                 sim_duration_ms=float(drop_cfg.get("sim_duration_ms", 200.0)),
                 style_threshold_ms=float(drop_cfg.get("style_duration_threshold_ms", 300.0)),
-                peak_threshold_g=float(drop_cfg.get("peak_threshold_g", 5.0)),
-                freefall_threshold_g=float(drop_cfg.get("freefall_threshold_g", -0.85)),
-                drop_baseline_correction=bool(drop_cfg.get("drop_baseline_correction", True)),
+                peak_threshold_g=float(drop_cfg.get("peak_threshold_g", DEFAULT_PEAK_THRESHOLD_G)),
+                freefall_threshold_g=float(drop_cfg.get("freefall_threshold_g", DEFAULT_FREEFALL_THRESHOLD_G)),
+                drop_baseline_correction=bool(drop_cfg.get("drop_baseline_correction", DEFAULT_DROP_BASELINE_CORRECTION)),
             )
 
             echo(f"    DEBUG: total_duration = {info['duration_ms']:.1f} ms -> style = {info['style']}")
@@ -704,7 +708,7 @@ def run_calibrate_drop(echo=print, mode: str = "peaks") -> dict:
         echo("Peak calibration complete. Updated calibration file:")
         echo(f"  {CALIBRATION_ROOT / f'{model_type}.json'}")
 
-        calibration_out_dir = resolve_path(str(drop_cfg.get("output_dir", "output/drop"))).parent / f"calibration_{model_type}_peaks"
+        calibration_out_dir = resolve_path(str(drop_cfg.get("output_dir", str(DEFAULT_DROP_OUTPUT_DIR)))).parent / f"calibration_{model_type}_peaks"
 
     # Run calibrated simulation on calibration inputs (always use yoganandan folder)
     echo("\nRunning calibrated simulation on calibration inputs...")
@@ -762,9 +766,9 @@ def run_simulate_drop(echo=print) -> list[dict]:
     # Get plotting config
     _, show_element_thickness, stack_elements, buttocks_clamp_to_height, heights_from_model = _get_plotting_config(config)
 
-    inputs_dir = resolve_path(str(drop_cfg.get("inputs_dir", "drops")))
-    pattern = str(drop_cfg.get("pattern", "*.csv"))
-    out_dir = resolve_path(str(drop_cfg.get("output_dir", "output/drop")))
+    inputs_dir = resolve_path(str(drop_cfg.get("inputs_dir", str(DEFAULT_DROP_INPUTS_DIR))))
+    pattern = str(drop_cfg.get("pattern", DEFAULT_DROP_PATTERN))
+    out_dir = resolve_path(str(drop_cfg.get("output_dir", str(DEFAULT_DROP_OUTPUT_DIR))))
 
     files = sorted(inputs_dir.glob(pattern))
     if not files:

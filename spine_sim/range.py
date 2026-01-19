@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# Default thresholds for drop impact detection
+DEFAULT_PEAK_THRESHOLD_G = 5.0
+DEFAULT_FREEFALL_THRESHOLD_G = -0.85
+
 
 @dataclass
 class HitRange:
@@ -11,8 +15,8 @@ class HitRange:
 
 def find_hit_range(
     accel_g: list[float],
-    peak_threshold_g: float = 5.0,
-    freefall_threshold_g: float = -0.85,
+    peak_threshold_g: float = DEFAULT_PEAK_THRESHOLD_G,
+    freefall_threshold_g: float = DEFAULT_FREEFALL_THRESHOLD_G,
 ) -> HitRange | None:
     """
     Find the first impact event in drop-style acceleration data.

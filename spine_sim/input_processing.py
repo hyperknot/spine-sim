@@ -8,7 +8,11 @@ import numpy as np
 
 from spine_sim.filters import cfc_filter
 from spine_sim.io import parse_csv_series, resample_to_uniform
-from spine_sim.range import find_hit_range
+from spine_sim.range import DEFAULT_FREEFALL_THRESHOLD_G, DEFAULT_PEAK_THRESHOLD_G, find_hit_range
+
+# Whether to apply freefall baseline correction by default.
+# This corrects accelerometer drift by adjusting freefall phase to exactly -1g.
+DEFAULT_DROP_BASELINE_CORRECTION = True
 
 
 def detect_style(duration_ms: float, threshold_ms: float) -> str:

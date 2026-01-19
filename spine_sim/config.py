@@ -10,6 +10,11 @@ DEFAULT_MASSES_JSON = REPO_ROOT / "opensim" / "fullbody.json"
 CALIBRATION_ROOT = REPO_ROOT / "calibration"
 CALIBRATION_YOGANANDAN_DIR = CALIBRATION_ROOT / "yoganandan"
 
+# Drop input/output defaults
+DEFAULT_DROP_INPUTS_DIR = REPO_ROOT / "drops"
+DEFAULT_DROP_PATTERN = "*.csv"
+DEFAULT_DROP_OUTPUT_DIR = REPO_ROOT / "output" / "drop"
+
 
 def read_config() -> dict:
     return json.loads((REPO_ROOT / "config.json").read_text(encoding="utf-8"))

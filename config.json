@@ -1,25 +1,15 @@
 {
   "model": {
     "type": "zwt",
-    "masses_json": "opensim/fullbody.json",
     "arm_recruitment": 0.5,
     "helmet_mass_kg": 0.7
   },
 
   "drop": {
-    "inputs_dir": "drops",
-    "pattern": "*.csv",
-    "output_dir": "output/drop",
-
     "cfc": 75,
-    "peak_threshold_g": 5.0,
-    "freefall_threshold_g": -0.85,
     "style_duration_threshold_ms": 300.0,
-
     "sim_duration_ms": 200.0,
     "gravity_settle_ms": 150.0,
-    "drop_baseline_correction": true,
-
     "calibration_mode": "peaks"
   },
 
