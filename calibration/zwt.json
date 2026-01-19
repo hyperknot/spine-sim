@@ -2,11 +2,11 @@
   "model": "zwt",
   "active_mode": "peaks",
   "peaks": {
-    "s_k_spine": 1.0,
-    "s_c_spine": 1.0,
-    "buttocks_k_n_per_m": 180500.0,
-    "buttocks_c_ns_per_m": 3130.0,
-    "buttocks_limit_mm": 39.0
+    "s_k_spine": 1.3681482830604388,
+    "s_c_spine": 1.6439861391361574,
+    "buttocks_k_n_per_m": 121206.52081043231,
+    "buttocks_c_ns_per_m": 4377.885073371906,
+    "buttocks_limit_mm": 56.49550968383522
   },
   "curves": {
     "s_k_spine": 1.0,

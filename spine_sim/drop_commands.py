@@ -52,22 +52,30 @@ def _require_path(d: dict, path: str) -> object:
 
 
 def _infer_element_k2_k3(model, e_idx: int) -> tuple[float, float, str]:
+    """
+    Report k2 and k3 "effective" coefficients as used by model.py after the change:
+      - k2 = poly_k2 (if any)
+      - k3 = k3_from_multiplier + poly_k3 (if any)
+    """
     k2 = 0.0
     if model.poly_k2 is not None:
         k2 = float(model.poly_k2[e_idx])
 
+    k_lin = float(model.k_elem[e_idx])
+    x_ref = float(model.compression_ref_m[e_idx])
+    k_mult = float(model.compression_k_mult[e_idx])
+
+    k3_mult = 0.0
+    if x_ref > 0.0 and k_mult > 1.0:
+        k3_mult = (k_mult - 1.0) * k_lin / (3.0 * x_ref * x_ref)
+
+    k3_poly = 0.0
+    source = 'multiplier'
     if model.poly_k3 is not None:
-        k3 = float(model.poly_k3[e_idx])
-        source = 'poly'
-    else:
-        k_lin = float(model.k_elem[e_idx])
-        x_ref = float(model.compression_ref_m[e_idx])
-        k_mult = float(model.compression_k_mult[e_idx])
-        if x_ref <= 0.0 or k_mult <= 1.0:
-            k3 = 0.0
-        else:
-            k3 = (k_mult - 1.0) * k_lin / (3.0 * x_ref * x_ref)
-        source = 'multiplier'
+        k3_poly = float(model.poly_k3[e_idx])
+        source = 'multiplier+poly'
+
+    k3 = k3_mult + k3_poly
     return k2, k3, source
 
 
@@ -184,10 +192,12 @@ def _load_curve_calibration_cases() -> list[CalibrationCase]:
     return cases
 
 
-def _build_joint_bounds(config: dict) -> dict[str, tuple[float, float]]:
+def _build_joint_bounds(config: dict, model_type: str) -> dict[str, tuple[float, float]]:
     """
     Build the joint parameter bounds dict for calibration.
-    Keys must match calibration.calibrate_model_*_joint keys.
+
+    Disabled parameters are represented as [x, x] in config and are still returned here,
+    but the calibrator will detect lo==hi and remove them from optimization.
     """
     bounds: dict[str, tuple[float, float]] = {}
 
@@ -203,9 +213,35 @@ def _build_joint_bounds(config: dict) -> dict[str, tuple[float, float]]:
     bounds['buttocks_c_ns_per_m'] = (float(bc0), float(bc1))
     bounds['buttocks_limit_mm'] = (float(bl0), float(bl1))
 
-    for k, (lo, hi) in bounds.items():
-        if lo <= 0.0 or hi <= 0.0 or not (hi > lo):
-            raise ValueError(f'Invalid bounds for {k}: [{lo}, {hi}]')
+    # Model-specific bounds (zwt/maxwell)
+    model_bounds = _require_path(config, f'{model_type}.calibration.bounds')
+    if not isinstance(model_bounds, dict):
+        raise ValueError(f'config.{model_type}.calibration.bounds must be an object/dict.')
+
+    def _add_scalar_bound(key: str) -> None:
+        if key not in model_bounds:
+            return
+        lo, hi = model_bounds[key]
+        bounds[key] = (float(lo), float(hi))
+
+    _add_scalar_bound('c_base_ns_per_m')
+    _add_scalar_bound('disc_poly_k2_n_per_m2')
+    _add_scalar_bound('disc_poly_k3_n_per_m3')
+
+    # Expand arrays
+    if 'maxwell_k_ratios' in model_bounds:
+        pairs = model_bounds['maxwell_k_ratios']
+        if not isinstance(pairs, list):
+            raise ValueError(f'config.{model_type}.calibration.bounds.maxwell_k_ratios must be a list.')
+        for b, pair in enumerate(pairs):
+            bounds[f'maxwell_k_ratio_{b}'] = (float(pair[0]), float(pair[1]))
+
+    if 'maxwell_tau_ms' in model_bounds:
+        pairs = model_bounds['maxwell_tau_ms']
+        if not isinstance(pairs, list):
+            raise ValueError(f'config.{model_type}.calibration.bounds.maxwell_tau_ms must be a list.')
+        for b, pair in enumerate(pairs):
+            bounds[f'maxwell_tau_ms_{b}'] = (float(pair[0]), float(pair[1]))
 
     return bounds
 
@@ -215,6 +251,8 @@ def _report_param_bounds(params: dict, bounds: dict[str, tuple[float, float]], e
         if key not in bounds:
             continue
         low, high = bounds[key]
+        if abs(high - low) <= 0.0:
+            continue
         if value <= low * 1.01 or value >= high * 0.99:
             echo(f'    DEBUG: {key}={value:.6g} is near bound [{low}, {high}]')
 
@@ -254,13 +292,17 @@ def run_calibrate_drop(echo=print, mode: str = 'peaks') -> dict:
     t12_elem_idx = base_model.element_names.index('T12-L1')
 
     settle_ms = float(drop_cfg.get('gravity_settle_ms', 150.0))
-    bounds = _build_joint_bounds(config)
+    bounds = _build_joint_bounds(config, model_type)
 
     default_params = model_path.default_params(config)
 
     if mode == 'curves':
         cases = _load_curve_calibration_cases()
         init_params = load_calibration_params(model_type, 'curves', default_params)
+
+        # Ensure any newly-added keys exist (from defaults)
+        for k, v in default_params.items():
+            init_params.setdefault(k, v)
 
         echo(f'Running CURVE joint calibration for {model_type}...')
         echo(f'DEBUG: initial params = {init_params}')
@@ -328,8 +370,12 @@ def run_calibrate_drop(echo=print, mode: str = 'peaks') -> dict:
 
         init_params = load_calibration_params(model_type, 'peaks', default_params)
 
+        # Ensure any newly-added keys exist (from defaults)
+        for k, v in default_params.items():
+            init_params.setdefault(k, v)
+
         echo(
-            f'Running PEAK joint calibration for {model_type} (buttocks k/c/limit + spine s_k/s_c)...'
+            f'Running PEAK joint calibration for {model_type} (buttocks k/c/limit + spine scales + optional model params)...'
         )
         echo(f'DEBUG: initial params = {init_params}')
 

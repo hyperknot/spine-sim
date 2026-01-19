@@ -31,11 +31,13 @@ class SpineModel:
     maxwell_tau_s: np.ndarray  # shape (N_elem, B)
     maxwell_compression_only: np.ndarray  # shape (N_elem,)
 
-    # Optional explicit polynomial terms for compression:
-    # F_eq(x) = k*x + k2*x^2 + k3*x^3, for x >= 0 (compression)
-    # Units:
-    #   k2: N/m^2
-    #   k3: N/m^3
+    # Optional explicit polynomial terms for compression.
+    #
+    # Important: these are ADDITIVE terms.
+    # The "multiplier at reference compression" cubic (derived from compression_k_mult/ref)
+    # remains active, and poly_k2/poly_k3 add extra stiffness on top.
+    #
+    # F_eq(x) = k*x + (k2*x^2) + ((k3_mult + k3_poly)*x^3), for x >= 0
     poly_k2: np.ndarray | None = None  # shape (N_elem,)
     poly_k3: np.ndarray | None = None  # shape (N_elem,)
 
@@ -94,6 +96,14 @@ class SimulationResult:
     a: np.ndarray  # shape (T, N)
     element_forces_n: np.ndarray  # shape (T, N_elem)
     maxwell_state_n: np.ndarray  # shape (T, N_elem, B)
+
+
+@dataclass
+class PeakOnlyResult:
+    peak_force_n: float
+    y_final: np.ndarray
+    v_final: np.ndarray
+    s_final: np.ndarray
 
 
 def _k3_from_multiplier(k_lin: float, x_ref: float, k_mult: float) -> float:
@@ -161,20 +171,24 @@ def _element_force_upper_and_partials(
     x = max(-ext_eff, 0.0)
     in_compression = x > 0.0
 
-    # Use explicit ZWT-style polynomial coefficients if provided;
-    # otherwise fall back to the older "multiplier at reference compression" cubic.
-    k2 = 0.0
+    # Polynomial extras (additive)
+    k2_poly = 0.0
     if model.poly_k2 is not None:
-        k2 = float(model.poly_k2[e_idx])
+        k2_poly = float(model.poly_k2[e_idx])
 
+    k3_poly = 0.0
     if model.poly_k3 is not None:
-        k3 = float(model.poly_k3[e_idx])
-    else:
-        k3 = _k3_from_multiplier(
-            k_lin,
-            float(model.compression_ref_m[e_idx]),
-            float(model.compression_k_mult[e_idx]),
-        )
+        k3_poly = float(model.poly_k3[e_idx])
+
+    # Base multiplier-derived cubic (always active)
+    k3_mult = _k3_from_multiplier(
+        k_lin,
+        float(model.compression_ref_m[e_idx]),
+        float(model.compression_k_mult[e_idx]),
+    )
+
+    k2 = k2_poly
+    k3 = k3_mult + k3_poly
 
     limit_m = None
     stop_k = 0.0
@@ -319,7 +333,6 @@ def _assemble_element_forces_and_tangent(
     return f_node, elem_forces, dfdy, s_next
 
 
-# newmark_nonlinear and initial_state_static unchanged below
 def newmark_nonlinear(
     model: SpineModel,
     time_s: np.ndarray,
@@ -441,6 +454,135 @@ def newmark_nonlinear(
         a=a,
         element_forces_n=elem_forces,
         maxwell_state_n=s_hist,
+    )
+
+
+def newmark_peak_element_force(
+    model: SpineModel,
+    time_s: np.ndarray,
+    base_accel_g: np.ndarray,
+    y0: np.ndarray,
+    v0: np.ndarray,
+    s0: np.ndarray | None = None,
+    *,
+    peak_element_index: int | None = None,
+    max_newton_iter: int = 25,
+    newton_tol: float = 1e-9,
+) -> PeakOnlyResult:
+    """
+    Peak-only Newmark integrator.
+
+    Same dynamics as newmark_nonlinear(), but avoids allocating/storing full histories.
+    Used to speed up peak calibration.
+
+    Returns:
+      - peak_force_n: max element force for peak_element_index (0.0 if None)
+      - final y/v/s
+    """
+    n = model.size()
+    ne = model.n_elems()
+    B = model.n_maxwell()
+
+    t = np.asarray(time_s, dtype=float)
+    base_accel_g = np.asarray(base_accel_g, dtype=float)
+
+    if t.size < 2:
+        raise ValueError('Need at least 2 time samples for integration.')
+
+    dt = float(np.median(np.diff(t)))
+    base_accel_mps2 = base_accel_g * G0
+
+    masses = np.asarray(model.masses_kg, dtype=float)
+    M = np.diag(masses)
+
+    beta = 0.25
+    gamma = 0.5
+
+    a0c = 1.0 / (beta * dt * dt)
+    a1c = 1.0 / (beta * dt)
+    a2c = (1.0 / (2.0 * beta)) - 1.0
+    dv_dy_coeff = gamma / (beta * dt)
+
+    if s0 is None:
+        s0 = np.zeros((ne, B), dtype=float)
+    else:
+        s0 = np.asarray(s0, dtype=float)
+        if s0.shape != (ne, B):
+            raise ValueError(f's0 must have shape {(ne, B)}, got {s0.shape}.')
+
+    y_n = np.asarray(y0, dtype=float).copy()
+    v_n = np.asarray(v0, dtype=float).copy()
+    s_prev = s0.copy()
+
+    f_base0 = -masses * (G0 + base_accel_mps2[0])
+    f_elem0, elem0, _, s_next0 = _assemble_element_forces_and_tangent(
+        model,
+        y_n,
+        v_n,
+        dv_dy_coeff=0.0,
+        dt=dt,
+        s_prev=s_prev,
+    )
+    s_prev = s_next0
+    a_n = np.linalg.solve(M, f_elem0 + f_base0)
+
+    peak = 0.0
+    if peak_element_index is not None:
+        peak = float(elem0[peak_element_index])
+
+    for k in range(t.size - 1):
+        f_base = -masses * (G0 + base_accel_mps2[k + 1])
+
+        y_guess = y_n + dt * v_n + (0.5 - beta) * dt * dt * a_n
+        s_step = s_prev.copy()
+
+        elem_f_last = None
+
+        for _ in range(max_newton_iter):
+            a_guess = a0c * (y_guess - y_n) - a1c * v_n - a2c * a_n
+            v_guess = v_n + dt * ((1.0 - gamma) * a_n + gamma * a_guess)
+
+            f_elem, elem_f, dfdy, s_next = _assemble_element_forces_and_tangent(
+                model,
+                y_guess,
+                v_guess,
+                dv_dy_coeff=dv_dy_coeff,
+                dt=dt,
+                s_prev=s_prev,
+            )
+            s_step = s_next
+            elem_f_last = elem_f
+
+            r = (M @ a_guess) - f_elem - f_base
+            J = (M * a0c) - dfdy
+
+            try:
+                dy = np.linalg.solve(J, -r)
+            except np.linalg.LinAlgError:
+                dy = np.linalg.lstsq(J, -r, rcond=None)[0]
+
+            y_guess = y_guess + 0.8 * dy
+
+            if float(np.linalg.norm(dy)) < newton_tol:
+                break
+
+        a_next = a0c * (y_guess - y_n) - a1c * v_n - a2c * a_n
+        v_next = v_n + dt * ((1.0 - gamma) * a_n + gamma * a_next)
+        y_next = y_guess
+
+        if peak_element_index is not None and elem_f_last is not None:
+            pk = float(elem_f_last[peak_element_index])
+            if pk > peak:
+                peak = pk
+
+        y_n, v_n, a_n = y_next, v_next, a_next
+        s_prev = s_step
+
+    return PeakOnlyResult(
+        peak_force_n=float(peak),
+        y_final=y_n,
+        v_final=v_n,
+        s_final=s_prev,
     )
 
 

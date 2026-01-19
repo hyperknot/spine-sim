@@ -43,16 +43,44 @@
   "maxwell": {
     "disc_ref_compression_mm": 2.0,
     "disc_k_mult_at_ref": 8.0,
-    "maxwell_k_ratios": [1.0, 0.5],
-    "maxwell_tau_ms": [10.0, 120.0],
-    "c_base_ns_per_m": 1200.0
+
+    "calibration": {
+      "init": {
+        "c_base_ns_per_m": 1200.0,
+        "disc_poly_k2_n_per_m2": 0.0,
+        "disc_poly_k3_n_per_m3": 0.0,
+        "maxwell_k_ratios": [1.0, 0.5],
+        "maxwell_tau_ms": [10.0, 120.0]
+      },
+      "bounds": {
+        "c_base_ns_per_m": [1200.0, 1200.0],
+        "disc_poly_k2_n_per_m2": [0.0, 0.0],
+        "disc_poly_k3_n_per_m3": [0.0, 0.0],
+        "maxwell_k_ratios": [[1.0, 1.0], [0.5, 0.5]],
+        "maxwell_tau_ms": [[10.0, 10.0], [120.0, 120.0]]
+      }
+    }
   },
 
   "zwt": {
-    "disc_poly_k2_n_per_m2": 0.0,
-    "disc_poly_k3_n_per_m3": 0.0,
-    "maxwell_k_ratios": [1.0, 0.5],
-    "maxwell_tau_ms": [10.0, 120.0],
-    "c_base_ns_per_m": 1200.0
+    "disc_ref_compression_mm": 2.0,
+    "disc_k_mult_at_ref": 8.0,
+
+    "calibration": {
+      "init": {
+        "c_base_ns_per_m": 1200.0,
+        "disc_poly_k2_n_per_m2": 0.0,
+        "disc_poly_k3_n_per_m3": 0.0,
+        "maxwell_k_ratios": [1.0, 0.5],
+        "maxwell_tau_ms": [10.0, 120.0]
+      },
+      "bounds": {
+        "c_base_ns_per_m": [1200.0, 1200.0],
+        "disc_poly_k2_n_per_m2": [0.0, 0.0],
+        "disc_poly_k3_n_per_m3": [0.0, 0.0],
+        "maxwell_k_ratios": [[1.0, 1.0], [0.5, 0.5]],
+        "maxwell_tau_ms": [[10.0, 10.0], [120.0, 120.0]]
+      }
+    }
   }
 }

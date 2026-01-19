@@ -29,24 +29,54 @@ def _require_path(d: dict, path: str) -> object:
     return cur
 
 
-def default_params_from_config(config: dict) -> dict:
+def _get_model_calibration_init(config: dict, model_key: str) -> dict:
+    init = _require_path(config, f'{model_key}.calibration.init')
+    if not isinstance(init, dict):
+        raise ValueError(f'config.{model_key}.calibration.init must be an object/dict.')
+    return init
+
+
+def default_params_from_config(config: dict, model_key: str) -> dict:
     """
     Default calibration params used to seed zwt/maxwell calibration files
     when they don't exist.
 
-    Buttocks defaults come from config.json buttock.calibration.init.
+    Includes:
+      - spine scales
+      - buttocks absolute
+      - model-specific calibration init values
     """
-    init = _require_path(config, 'buttock.calibration.init')
-    if not isinstance(init, dict):
+    init_butt = _require_path(config, 'buttock.calibration.init')
+    if not isinstance(init_butt, dict):
         raise ValueError('config.buttock.calibration.init must be an object/dict.')
 
-    return {
+    init_model = _get_model_calibration_init(config, model_key)
+
+    ratios = init_model.get('maxwell_k_ratios', [1.0, 0.5])
+    taus = init_model.get('maxwell_tau_ms', [10.0, 120.0])
+    if not isinstance(ratios, list) or not isinstance(taus, list):
+        raise ValueError(f'config.{model_key}.calibration.init.maxwell_* must be lists.')
+
+    B = max(len(ratios), len(taus))
+    ratios = (ratios + [0.0] * B)[:B]
+    taus = (taus + [0.0] * B)[:B]
+
+    params = {
         's_k_spine': 1.0,
         's_c_spine': 1.0,
         'buttocks_k_n_per_m': float(_require_path(config, 'buttock.calibration.init.k_n_per_m')),
         'buttocks_c_ns_per_m': float(_require_path(config, 'buttock.calibration.init.c_ns_per_m')),
         'buttocks_limit_mm': float(_require_path(config, 'buttock.calibration.init.limit_mm')),
+        'c_base_ns_per_m': float(init_model.get('c_base_ns_per_m', 1200.0)),
+        'disc_poly_k2_n_per_m2': float(init_model.get('disc_poly_k2_n_per_m2', 0.0)),
+        'disc_poly_k3_n_per_m3': float(init_model.get('disc_poly_k3_n_per_m3', 0.0)),
     }
+
+    for b in range(B):
+        params[f'maxwell_k_ratio_{b}'] = float(ratios[b])
+        params[f'maxwell_tau_ms_{b}'] = float(taus[b])
+
+    return params
 
 
 def _get_buttocks_fixed_config(config: dict) -> tuple[float, float, float, float, float]:
@@ -75,10 +105,17 @@ def _build_spine_model(mass_map: dict, config: dict, model_key: str) -> SpineMod
       - base_model is initialized from config.buttock.calibration.init (k/c/limit)
       - stop_k/smoothing are fixed from config.buttock.densification
       - during calibration/simulation, apply_calibration() overwrites k/c/limit
-    """
-    cfg = config.get(model_key, config.get('maxwell', config.get('nonlinear', {})))
 
-    c_base = float(cfg.get('c_base_ns_per_m', 1200.0))
+    Model-specific:
+      - c_base, disc_poly, maxwell branch lists come from config.<model_key>.calibration.init
+    """
+    cfg_root = config.get(model_key, {})
+    if not isinstance(cfg_root, dict):
+        raise ValueError(f'config.{model_key} must be an object/dict.')
+
+    init_model = _get_model_calibration_init(config, model_key)
+
+    c_base = float(init_model.get('c_base_ns_per_m', 1200.0))
     node_names, masses, element_names, k_elem, c_elem = build_spine_elements(mass_map, c_base)
 
     # Inject buttocks initial k/c from config before Maxwell branch generation.
@@ -88,11 +125,11 @@ def _build_spine_model(mass_map: dict, config: dict, model_key: str) -> SpineMod
     k_elem[0] = init_k
     c_elem[0] = init_c
 
-    disc_k2 = float(cfg.get('disc_poly_k2_n_per_m2', 0.0))
-    disc_k3 = float(cfg.get('disc_poly_k3_n_per_m3', 0.0))
+    disc_k2 = float(init_model.get('disc_poly_k2_n_per_m2', 0.0))
+    disc_k3 = float(init_model.get('disc_poly_k3_n_per_m3', 0.0))
 
-    disc_ref_mm = float(cfg.get('disc_ref_compression_mm', 2.0))
-    disc_kmult = float(cfg.get('disc_k_mult_at_ref', 8.0))
+    disc_ref_mm = float(cfg_root.get('disc_ref_compression_mm', 2.0))
+    disc_kmult = float(cfg_root.get('disc_k_mult_at_ref', 8.0))
 
     n_elem = len(k_elem)
     compression_ref_m = np.zeros(n_elem, dtype=float)
@@ -112,14 +149,20 @@ def _build_spine_model(mass_map: dict, config: dict, model_key: str) -> SpineMod
 
     poly_k2 = None
     poly_k3 = None
-    if any(abs(x) > 0.0 for x in [disc_k2, disc_k3]):
+    if abs(disc_k2) > 0.0 or abs(disc_k3) > 0.0:
         poly_k2 = np.zeros(n_elem, dtype=float)
         poly_k3 = np.zeros(n_elem, dtype=float)
-        poly_k2[1:], poly_k3[1:] = disc_k2, disc_k3
+        poly_k2[1:] = disc_k2
+        poly_k3[1:] = disc_k3
 
-    # Maxwell branches
-    mx_k_ratios = [float(x) for x in cfg.get('maxwell_k_ratios', [1.0, 0.5])]
-    mx_tau_ms = [float(x) for x in cfg.get('maxwell_tau_ms', [10.0, 120.0])]
+    # Maxwell branches (lists)
+    mx_k_ratios = init_model.get('maxwell_k_ratios', [1.0, 0.5])
+    mx_tau_ms = init_model.get('maxwell_tau_ms', [10.0, 120.0])
+    if not isinstance(mx_k_ratios, list) or not isinstance(mx_tau_ms, list):
+        raise ValueError(f'config.{model_key}.calibration.init.maxwell_* must be lists.')
+
+    mx_k_ratios = [float(x) for x in mx_k_ratios]
+    mx_tau_ms = [float(x) for x in mx_tau_ms]
     B = max(len(mx_k_ratios), len(mx_tau_ms))
     mx_k_ratios = (mx_k_ratios + [0.0] * B)[:B]
     mx_tau_ms = (mx_tau_ms + [0.0] * B)[:B]
@@ -171,19 +214,40 @@ def apply_calibration(base_model: SpineModel, params: dict) -> SpineModel:
     Apply calibration params:
       - buttocks absolute params: k/c/limit
       - spine scale params: s_k_spine, s_c_spine
-    """
-    s_k_spine = float(params['s_k_spine'])
-    s_c_spine = float(params['s_c_spine'])
+      - optional model-specific: c_base, disc poly, maxwell branch ratios/tau
 
-    butt_k = float(params['buttocks_k_n_per_m'])
-    butt_c = float(params['buttocks_c_ns_per_m'])
-    butt_limit_mm = float(params['buttocks_limit_mm'])
+    Notes:
+      - c_base_ns_per_m is applied by scaling the existing spine damping pattern (element 1+),
+        using T9-T10 as the "reference that equals c_base" in build_spine_elements().
+      - Maxwell branches are rebuilt from current element k and the branch ratios.
+      - poly_k2/poly_k3 are additive (see model.py) and are scaled by s_k_spine.
+    """
+    s_k_spine = float(params.get('s_k_spine', 1.0))
+    s_c_spine = float(params.get('s_c_spine', 1.0))
+
+    butt_k = float(params.get('buttocks_k_n_per_m', base_model.k_elem[0]))
+    butt_c = float(params.get('buttocks_c_ns_per_m', base_model.c_elem[0]))
+    butt_limit_mm = float(params.get('buttocks_limit_mm', 0.0))
+
+    n_elem = base_model.n_elems()
+    B = base_model.n_maxwell()
 
     k = base_model.k_elem.copy()
     c = base_model.c_elem.copy()
 
+    # Optional c_base scaling for spine dampers (element 1+)
+    if 'c_base_ns_per_m' in params:
+        c_base_new = float(params['c_base_ns_per_m'])
+        try:
+            ref_idx = base_model.element_names.index('T9-T10')
+            c_base_init = float(base_model.c_elem[ref_idx])
+        except ValueError:
+            c_base_init = float(np.median(base_model.c_elem[1:][base_model.c_elem[1:] > 0.0])) if n_elem > 1 else 0.0
+
+        if c_base_init > 0.0 and n_elem > 1:
+            c[1:] *= (c_base_new / c_base_init)
+
     # Buttocks absolute
-    old_butt_k = float(k[0])
     k[0] = butt_k
     c[0] = butt_c
 
@@ -191,20 +255,38 @@ def apply_calibration(base_model: SpineModel, params: dict) -> SpineModel:
     k[1:] *= s_k_spine
     c[1:] *= s_c_spine
 
-    # Maxwell: buttocks k changes absolutely; spine scales
+    # Maxwell rebuild (ratios + tau)
     mx_k = base_model.maxwell_k.copy()
-    if mx_k.size:
-        if old_butt_k > 0.0:
-            mx_k[0, :] *= butt_k / old_butt_k
-        mx_k[1:, :] *= s_k_spine
+    mx_tau_s = base_model.maxwell_tau_s.copy()
+    if B > 0:
+        ratios = np.array(
+            [float(params.get(f'maxwell_k_ratio_{b}', 0.0)) for b in range(B)],
+            dtype=float,
+        )
+        tau_ms = np.array(
+            [float(params.get(f'maxwell_tau_ms_{b}', 0.0)) for b in range(B)],
+            dtype=float,
+        )
+        mx_tau_s = np.tile((tau_ms / 1000.0)[None, :], (n_elem, 1))
+        mx_k = np.zeros((n_elem, B), dtype=float)
+        for e in range(n_elem):
+            mx_k[e, :] = k[e] * ratios
 
+    # Poly extras (additive) for spine elements (1+), scaled by s_k_spine
     poly_k2 = None if base_model.poly_k2 is None else base_model.poly_k2.copy()
     poly_k3 = None if base_model.poly_k3 is None else base_model.poly_k3.copy()
 
-    if poly_k2 is not None:
-        poly_k2[1:] *= s_k_spine
+    disc_k2 = float(params.get('disc_poly_k2_n_per_m2', 0.0))
+    disc_k3 = float(params.get('disc_poly_k3_n_per_m3', 0.0))
+    if abs(disc_k2) > 0.0 or abs(disc_k3) > 0.0 or poly_k2 is not None or poly_k3 is not None:
+        if poly_k2 is None:
+            poly_k2 = np.zeros(n_elem, dtype=float)
+        if poly_k3 is None:
+            poly_k3 = np.zeros(n_elem, dtype=float)
+        poly_k2[1:] = disc_k2
+        poly_k3[1:] = disc_k3
 
-    if poly_k3 is not None:
+        poly_k2[1:] *= s_k_spine
         poly_k3[1:] *= s_k_spine
 
     # Densification limit for buttocks (stop params already live in base_model)
@@ -228,7 +310,7 @@ def apply_calibration(base_model: SpineModel, params: dict) -> SpineModel:
         damping_compression_only=base_model.damping_compression_only,
         gap_m=base_model.gap_m,
         maxwell_k=mx_k,
-        maxwell_tau_s=base_model.maxwell_tau_s,
+        maxwell_tau_s=mx_tau_s,
         maxwell_compression_only=base_model.maxwell_compression_only,
         poly_k2=poly_k2,
         poly_k3=poly_k3,
@@ -245,6 +327,10 @@ def calibrate_peaks(
     *,
     init_params: dict,
     bounds: dict[str, tuple[float, float]],
+    verbose: bool = True,
+    n_starts: int = 5,
+    cost_tol: float = 1e-4,
+    stall_iters: int = 10,
 ) -> CalibrationResult:
     return calibrate_model_peaks_joint(
         base_model,
@@ -254,6 +340,15 @@ def calibrate_peaks(
         bounds=bounds,
         apply_params=apply_calibration,
         max_nfev=200,
+        verbose=verbose,
+        n_starts=n_starts,
+        cost_tol=cost_tol,
+        stall_iters=stall_iters,
+        explore_samples=200,
+        explore_keep=40,
+        diversity_min_dist=0.25,
+        snap_norm_step=0.02,
+        cache_norm_step=0.02,
     )
 
 
@@ -293,7 +388,7 @@ MODEL_PATHS: dict[str, ModelPath] = {
         apply_calibration=apply_calibration,
         calibrate_peaks=calibrate_peaks,
         calibrate_curves=calibrate_curves,
-        default_params=default_params_from_config,
+        default_params=lambda cfg: default_params_from_config(cfg, 'maxwell'),
     ),
     'zwt': ModelPath(
         name='zwt',
@@ -301,7 +396,7 @@ MODEL_PATHS: dict[str, ModelPath] = {
         apply_calibration=apply_calibration,
         calibrate_peaks=calibrate_peaks,
         calibrate_curves=calibrate_curves,
-        default_params=default_params_from_config,
+        default_params=lambda cfg: default_params_from_config(cfg, 'zwt'),
     ),
 }
 
