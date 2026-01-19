@@ -54,6 +54,20 @@ class ToenDropResult:
     floor_overshoot_mm: float | None
 
 
+@dataclass(frozen=True)
+class ToenDropTrace:
+    """
+    Full time history for a single Toen drop simulation (2-DOF surrogate).
+    """
+    time_s: np.ndarray
+    y_skin_m: np.ndarray
+    y_body_m: np.ndarray
+    floor_force_n: np.ndarray
+    buttocks_force_n: np.ndarray
+    floor_compression_m: np.ndarray
+    buttocks_compression_m: np.ndarray
+
+
 def _pick_targets(target_set: str) -> dict[str, float]:
     key = target_set.strip().lower()
     if key in {"avg", "paper"}:
@@ -163,6 +177,46 @@ def simulate_toen_drop(
     duration_s: float = 0.15,
     max_newton_iter: int = 10,
 ) -> ToenDropResult:
+    """
+    Summary-only simulation (kept for backwards compatibility).
+    """
+    result, _trace = simulate_toen_drop_trace(
+        floor_name=floor_name,
+        body_mass_kg=body_mass_kg,
+        buttocks_k_n_per_m=buttocks_k_n_per_m,
+        buttocks_c_ns_per_m=buttocks_c_ns_per_m,
+        floor_k_n_per_m=floor_k_n_per_m,
+        impact_velocity_mps=impact_velocity_mps,
+        buttocks_limit_mm=buttocks_limit_mm,
+        buttocks_stop_k_n_per_m=buttocks_stop_k_n_per_m,
+        buttocks_stop_smoothing_mm=buttocks_stop_smoothing_mm,
+        skin_mass_kg=skin_mass_kg,
+        dt_s=dt_s,
+        duration_s=duration_s,
+        max_newton_iter=max_newton_iter,
+    )
+    return result
+
+
+def simulate_toen_drop_trace(
+    *,
+    floor_name: str,
+    body_mass_kg: float,
+    buttocks_k_n_per_m: float,
+    buttocks_c_ns_per_m: float,
+    floor_k_n_per_m: float,
+    impact_velocity_mps: float,
+    buttocks_limit_mm: float | None = None,
+    buttocks_stop_k_n_per_m: float = 0.0,
+    buttocks_stop_smoothing_mm: float = 1.0,
+    skin_mass_kg: float = TOEN_TABLE1_MASSES_50TH_KG["skin"],
+    dt_s: float = 0.0005,
+    duration_s: float = 0.15,
+    max_newton_iter: int = 10,
+) -> tuple[ToenDropResult, ToenDropTrace]:
+    """
+    Full time-history simulation for plotting (force/compression vs time).
+    """
     model = build_toen_drop_model(
         body_mass_kg=body_mass_kg,
         skin_mass_kg=skin_mass_kg,
@@ -214,7 +268,7 @@ def simulate_toen_drop(
     if buttocks_limit_mm is not None:
         butt_overshoot_mm = max(0.0, max_butt_mm - float(buttocks_limit_mm))
 
-    return ToenDropResult(
+    result = ToenDropResult(
         floor_name=floor_name,
         floor_k_n_per_m=float(floor_k_n_per_m),
         impact_velocity_mps=float(impact_velocity_mps),
@@ -229,6 +283,21 @@ def simulate_toen_drop(
         floor_overshoot_mm=None,
     )
 
+    # Time-history signals for plotting
+    floor_comp = np.maximum(-y_skin, 0.0)
+    butt_comp = np.maximum(-(y_body - y_skin), 0.0)
+
+    trace = ToenDropTrace(
+        time_s=np.asarray(sim.time_s, dtype=float),
+        y_skin_m=np.asarray(y_skin, dtype=float),
+        y_body_m=np.asarray(y_body, dtype=float),
+        floor_force_n=np.asarray(sim.element_forces_n[:, 0], dtype=float),
+        buttocks_force_n=np.asarray(sim.element_forces_n[:, 1], dtype=float),
+        floor_compression_m=np.asarray(floor_comp, dtype=float),
+        buttocks_compression_m=np.asarray(butt_comp, dtype=float),
+    )
+
+    return result, trace
 
 
 def run_toen_suite(

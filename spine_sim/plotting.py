@@ -500,3 +500,57 @@ def plot_buttocks_only(
     plt.tight_layout()
     plt.savefig(out_path, dpi=160, bbox_inches='tight')
     plt.close()
+
+
+def plot_toen_buttocks_force_compression(
+    time_s: np.ndarray,
+    *,
+    compression_by_floor_mm: dict[str, np.ndarray],
+    force_by_floor_kN: dict[str, np.ndarray],
+    out_path: Path,
+    title: str,
+) -> None:
+    """
+    Overlay plot for Toen drop buttocks response:
+      - Buttocks compression (mm) vs time
+      - Buttocks force (kN) vs time
+
+    Intended for the 2-DOF Toen surrogate in spine_sim/toen_drop.py.
+    """
+    order = ["soft_59", "medium_67", "firm_95", "rigid_400"]
+    floors = [f for f in order if f in compression_by_floor_mm and f in force_by_floor_kN]
+    floors += [f for f in compression_by_floor_mm.keys() if f not in floors]
+
+    time_ms = time_s * 1000.0
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
+
+    colors = plt.cm.viridis(np.linspace(0.05, 0.9, max(len(floors), 1)))
+
+    for i, floor in enumerate(floors):
+        ax1.plot(
+            time_ms,
+            compression_by_floor_mm[floor],
+            label=floor,
+            linewidth=1.8,
+            color=colors[i],
+        )
+        ax2.plot(
+            time_ms,
+            force_by_floor_kN[floor],
+            label=floor,
+            linewidth=1.8,
+            color=colors[i],
+        )
+
+    ax1.set_title(title)
+    ax1.set_ylabel("Buttocks compression (mm)")
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(ncol=2, fontsize=9)
+
+    ax2.set_xlabel("Time (ms)")
+    ax2.set_ylabel("Buttocks force (kN)")
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=160, bbox_inches="tight")
+    plt.close()

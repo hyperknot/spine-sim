@@ -19,8 +19,16 @@ from spine_sim.model import newmark_nonlinear
 from spine_sim.model_paths import get_model_path
 from spine_sim.range import find_hit_range
 
-from spine_sim.toen_drop import TOEN_IMPACT_V_MPS, calibrate_toen_buttocks_model, run_toen_suite
+from spine_sim.toen_drop import (
+    TOEN_IMPACT_V_MPS,
+    calibrate_toen_buttocks_model,
+    run_toen_suite,
+    simulate_toen_drop_trace,
+)
 from spine_sim.toen_store import load_toen_drop_calibration, write_toen_drop_calibration
+from spine_sim.toen_subjects import TOEN_SUBJECTS, subject_buttocks_kc, toen_torso_mass_scaled_kg
+from spine_sim.toen_targets import TOEN_FLOOR_STIFFNESS_N_PER_M
+from spine_sim.plotting import plot_toen_buttocks_force_compression
 
 
 REPO_ROOT = Path(__file__).parent
@@ -290,7 +298,10 @@ def simulate_drop() -> None:
         peak_t12 = float(np.max(forces[:, t12_idx]) / 1000.0)
         peak_butt = float(np.max(forces[:, butt_idx]) / 1000.0)
 
-        print(f"  style={info.style}, dt={info.dt_s*1000.0:.3f} ms, peak_T12L1={peak_t12:.3f} kN, peak_butt={peak_butt:.3f} kN")
+        print(
+            f"  style={info.style}, dt={info.dt_s*1000.0:.3f} ms, "
+            f"peak_T12L1={peak_t12:.3f} kN, peak_butt={peak_butt:.3f} kN"
+        )
 
         summary.append(
             {
@@ -502,6 +513,122 @@ def calibrate_buttock() -> None:
     print(json.dumps(result, indent=2))
 
 
+def plot_toen_buttocks() -> None:
+    """
+    Produce a buttocks-only plot (force + compression vs time) for a Toen-style run.
+
+    - Uses the saved Toen calibration if present and matching target_set.
+    - Overlays all floors (soft/medium/firm/rigid) in one figure.
+    """
+    config = _read_config()
+    bcfg = config["buttock"]
+
+    subject = str(bcfg.get("subject", "avg")).lower()
+    if subject == "both":
+        subject = "avg"
+
+    target_set = str(bcfg.get("target_set", "avg")).lower()
+    if target_set == "fig3":
+        target_set = "subj3"
+
+    male50 = float(bcfg.get("male50_mass_kg", 75.4))
+
+    solver = bcfg.get("solver", {})
+    dt_s = float(solver.get("dt_s", 0.0005))
+    duration_s = float(solver.get("duration_s", 0.15))
+    max_newton_iter = int(solver.get("max_newton_iter", 10))
+
+    # Plot velocity: default to canonical Toen 3.5 m/s.
+    v_plot = float(bcfg.get("plot_velocity_mps", TOEN_IMPACT_V_MPS))
+
+    # Densification defaults; may be overridden by saved calibration.
+    dens = bcfg.get("densification", {})
+    butt = dens.get("buttocks", {})
+    butt_limit_mm = float(butt.get("limit_mm", 39.0))
+    butt_stop_k = float(butt.get("stop_k_n_per_m", 5.0e6))
+    butt_smooth_mm = float(butt.get("smoothing_mm", 1.0))
+
+    butt_k_override = None
+    butt_c_override = None
+    butt_limit_override = None
+    butt_stop_k_override = None
+    butt_smooth_override = None
+
+    if bool(bcfg.get("use_saved_calibration", True)):
+        doc, path = load_toen_drop_calibration()
+        if doc is not None:
+            r = doc.get("result", {})
+            saved_target = str(r.get("target_set", "")).lower()
+            if saved_target == target_set:
+                butt_k_override = r.get("buttocks_k_n_per_m", None)
+                butt_c_override = r.get("buttocks_c_ns_per_m", None)
+                butt_limit_override = r.get("buttocks_limit_mm", None)
+                butt_stop_k_override = r.get("buttocks_stop_k_n_per_m", None)
+                butt_smooth_override = r.get("buttocks_stop_smoothing_mm", None)
+                print(f"BUTTOCK plot: loaded calibration from {path}")
+            else:
+                print(
+                    f"BUTTOCK plot: saved calibration target_set mismatch "
+                    f"(saved={saved_target!r}, requested={target_set!r}); ignoring {path}"
+                )
+
+    if butt_limit_override is not None:
+        butt_limit_mm = float(butt_limit_override)
+    if butt_stop_k_override is not None:
+        butt_stop_k = float(butt_stop_k_override)
+    if butt_smooth_override is not None:
+        butt_smooth_mm = float(butt_smooth_override)
+
+    subj = TOEN_SUBJECTS[subject]
+    torso_mass = toen_torso_mass_scaled_kg(subj.total_mass_kg, male50_mass_kg=male50)
+
+    k_subj, c_subj = subject_buttocks_kc(subject)
+    k_butt = float(k_subj if butt_k_override is None else butt_k_override)
+    c_butt = float(c_subj if butt_c_override is None else butt_c_override)
+
+    out_dir = _resolve_path(str(bcfg.get("output_dir", "output/toen_drop")))
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    compression_by_floor_mm: dict[str, np.ndarray] = {}
+    force_by_floor_kN: dict[str, np.ndarray] = {}
+    time_s: np.ndarray | None = None
+
+    for floor_name, k_floor in TOEN_FLOOR_STIFFNESS_N_PER_M.items():
+        _res, trace = simulate_toen_drop_trace(
+            floor_name=floor_name,
+            body_mass_kg=torso_mass,
+            buttocks_k_n_per_m=k_butt,
+            buttocks_c_ns_per_m=c_butt,
+            floor_k_n_per_m=float(k_floor),
+            impact_velocity_mps=v_plot,
+            buttocks_limit_mm=butt_limit_mm,
+            buttocks_stop_k_n_per_m=butt_stop_k,
+            buttocks_stop_smoothing_mm=butt_smooth_mm,
+            dt_s=dt_s,
+            duration_s=duration_s,
+            max_newton_iter=max_newton_iter,
+        )
+
+        if time_s is None:
+            time_s = trace.time_s
+
+        compression_by_floor_mm[floor_name] = trace.buttocks_compression_m * 1000.0
+        force_by_floor_kN[floor_name] = trace.buttocks_force_n / 1000.0
+
+    if time_s is None:
+        raise SystemExit("No Toen trace data generated (unexpected).")
+
+    out_path = out_dir / f"buttocks_force_compression_v{v_plot:.2f}.png"
+    plot_toen_buttocks_force_compression(
+        time_s,
+        compression_by_floor_mm=compression_by_floor_mm,
+        force_by_floor_kN=force_by_floor_kN,
+        out_path=out_path,
+        title=f"Toen buttocks response (subject={subject}, target_set={target_set}, v={v_plot:.2f} m/s)",
+    )
+    print(f"BUTTOCK plot complete. Wrote {out_path}")
+
+
 def _write_timeseries_csv(
     out_path: Path,
     time_s: np.ndarray,
@@ -542,6 +669,7 @@ def main() -> None:
             "calibrate-drop",
             "simulate-buttocks",
             "calibrate-buttocks",
+            "plot-toen-buttocks",
         ],
     )
     args = parser.parse_args()
@@ -557,6 +685,9 @@ def main() -> None:
         return
     if args.mode in {"calibrate-buttocks"}:
         calibrate_buttock()
+        return
+    if args.mode in {"plot-toen-buttocks"}:
+        plot_toen_buttocks()
         return
 
     raise SystemExit("Unknown mode.")
