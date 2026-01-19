@@ -225,6 +225,8 @@ def _build_joint_bounds(config: dict, model_type: str) -> dict[str, tuple[float,
         bounds[key] = (float(lo), float(hi))
 
     _add_scalar_bound('c_base_ns_per_m')
+    _add_scalar_bound('disc_ref_compression_mm')
+    _add_scalar_bound('disc_k_mult_at_ref')
     _add_scalar_bound('disc_poly_k2_n_per_m2')
     _add_scalar_bound('disc_poly_k3_n_per_m3')
 

@@ -121,7 +121,7 @@ def calibrate_model_peaks_joint(
     def _key_sort(k: str) -> tuple:
         if k in base_keys:
             return (0, base_keys.index(k), k)
-        if k in ('c_base_ns_per_m', 'disc_poly_k2_n_per_m2', 'disc_poly_k3_n_per_m3'):
+        if k in ('c_base_ns_per_m', 'disc_ref_compression_mm', 'disc_k_mult_at_ref', 'disc_poly_k2_n_per_m2', 'disc_poly_k3_n_per_m3'):
             return (1, k, k)
         if k.startswith('maxwell_k_ratio_'):
             return (2, int(k.split('_')[-1]), k)

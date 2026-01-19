@@ -77,6 +77,8 @@
       "init":
       {
         "c_base_ns_per_m": 1200.0,
+        "disc_ref_compression_mm": 2.0,
+        "disc_k_mult_at_ref": 8.0,
         "disc_poly_k2_n_per_m2": 0.0,
         "disc_poly_k3_n_per_m3": 0.0,
         "maxwell_k_ratios":
@@ -96,6 +98,16 @@
         [
           800.0,
           1600.0
+        ],
+        "disc_ref_compression_mm":
+        [
+          1.0,
+          5.0
+        ],
+        "disc_k_mult_at_ref":
+        [
+          1.0,
+          20.0
         ],
         "disc_poly_k2_n_per_m2":
         [
