@@ -105,28 +105,28 @@ def calibrate_model_peaks_joint(
       - Refinement caches are shared across all starts (what you asked for).
     """
     if not cases:
-        raise ValueError("No calibration cases provided.")
+        raise ValueError('No calibration cases provided.')
 
     # -------------------------
     # Key ordering
     # -------------------------
     base_keys = [
-        "s_k_spine",
-        "s_c_spine",
-        "buttocks_k_n_per_m",
-        "buttocks_c_ns_per_m",
-        "buttocks_limit_mm",
+        's_k_spine',
+        's_c_spine',
+        'buttocks_k_n_per_m',
+        'buttocks_c_ns_per_m',
+        'buttocks_limit_mm',
     ]
 
     def _key_sort(k: str) -> tuple:
         if k in base_keys:
             return (0, base_keys.index(k), k)
-        if k in ("c_base_ns_per_m", "disc_poly_k2_n_per_m2", "disc_poly_k3_n_per_m3"):
+        if k in ('c_base_ns_per_m', 'disc_poly_k2_n_per_m2', 'disc_poly_k3_n_per_m3'):
             return (1, k, k)
-        if k.startswith("maxwell_k_ratio_"):
-            return (2, int(k.split("_")[-1]), k)
-        if k.startswith("maxwell_tau_ms_"):
-            return (3, int(k.split("_")[-1]), k)
+        if k.startswith('maxwell_k_ratio_'):
+            return (2, int(k.split('_')[-1]), k)
+        if k.startswith('maxwell_tau_ms_'):
+            return (3, int(k.split('_')[-1]), k)
         return (9, k, k)
 
     all_keys = sorted(bounds.keys(), key=_key_sort)
@@ -156,7 +156,7 @@ def calibrate_model_peaks_joint(
     for i, k in enumerate(all_keys):
         lo, hi = float(bounds[k][0]), float(bounds[k][1])
         if hi < lo:
-            raise ValueError(f"Invalid bounds for {k}: [{lo}, {hi}]")
+            raise ValueError(f'Invalid bounds for {k}: [{lo}, {hi}]')
         lo_phys[i] = lo
         hi_phys[i] = hi
         x0_phys[i] = float(init_params[k])
@@ -186,14 +186,14 @@ def calibrate_model_peaks_joint(
         parts = []
         for k in keys:
             if k in p:
-                parts.append(f"{k}={p[k]:.6g}")
-        return ", ".join(parts)
+                parts.append(f'{k}={p[k]:.6g}')
+        return ', '.join(parts)
 
     def _print_case_details(details: list[tuple[str, float, float, float]]) -> None:
         for name, pred, target, r in details:
             print(
-                f"    {name}: pred={pred:.1f}N, target={target:.1f}N, "
-                f"err={pred-target:+.1f}N, resid={r:+.4f}"
+                f'    {name}: pred={pred:.1f}N, target={target:.1f}N, '
+                f'err={pred - target:+.1f}N, resid={r:+.4f}'
             )
 
     # Full internal vectors
@@ -251,11 +251,11 @@ def calibrate_model_peaks_joint(
             details.append((case.name, pred, targets[j], r))
 
         if verbose:
-            print("=== Peak calibration (nothing enabled) ===")
-            print(f"  Params: {_format_param_line(p, base_keys)}")
-            print("  Residuals per case:")
+            print('=== Peak calibration (nothing enabled) ===')
+            print(f'  Params: {_format_param_line(p, base_keys)}')
+            print('  Residuals per case:')
             _print_case_details(details)
-            print(f"  Cost: {float(np.sum(res**2)):.6f}")
+            print(f'  Cost: {float(np.sum(res**2)):.6f}')
 
         return CalibrationResult(
             params=p,
@@ -305,7 +305,7 @@ def calibrate_model_peaks_joint(
             od.popitem(last=False)
 
     def _norm01(x_int_full: np.ndarray) -> np.ndarray:
-        denom = (hi_int_full - lo_int_full)
+        denom = hi_int_full - lo_int_full
         denom = np.where(denom == 0.0, 1.0, denom)
         z = (x_int_full - lo_int_full) / denom
         return np.clip(z, 0.0, 1.0)
@@ -316,7 +316,7 @@ def calibrate_model_peaks_joint(
         z = _norm01(x_int_full)
         zq = np.rint(z / step) * step
         zq = np.clip(zq, 0.0, 1.0)
-        denom = (hi_int_full - lo_int_full)
+        denom = hi_int_full - lo_int_full
         denom = np.where(denom == 0.0, 1.0, denom)
         return lo_int_full + zq * denom
 
@@ -364,10 +364,10 @@ def calibrate_model_peaks_joint(
         model = _get_model(x_int_full_snapped)
         p = _params_dict_from_int_full(x_int_full_snapped)
 
-        if stage == "explore":
+        if stage == 'explore':
             peak_cache = explore_peak_cache
             settle_cache = explore_settle_cache
-        elif stage == "refine":
+        elif stage == 'refine':
             peak_cache = refine_peak_cache
             settle_cache = refine_settle_cache
         else:
@@ -442,21 +442,27 @@ def calibrate_model_peaks_joint(
     if verbose:
         enabled_keys = [all_keys[i] for i in enabled_idx]
         fixed_keys = [all_keys[i] for i in fixed_idx]
-        print("=== Peak calibration setup ===")
-        print(f"  total params: {len(all_keys)}")
-        print(f"  enabled: {len(enabled_keys)}")
-        print(f"  fixed (disabled via lo==hi): {len(fixed_keys)}")
+        print('=== Peak calibration setup ===')
+        print(f'  total params: {len(all_keys)}')
+        print(f'  enabled: {len(enabled_keys)}')
+        print(f'  fixed (disabled via lo==hi): {len(fixed_keys)}')
         if fixed_keys:
-            print("  fixed keys:")
+            print('  fixed keys:')
             for k in fixed_keys:
                 lo, _hi = bounds[k]
-                print(f"    {k} = {lo} (fixed)")
-        print(f"  exploration cases: ALL ({len(cases)})")
-        print(f"  explore: samples={explore_samples}, keep={explore_keep}, local_frac={explore_local_frac:.2f}, local_sigma={explore_local_sigma:.2f}")
-        print(f"  starts: n_starts={n_starts}, diversity_min_dist={diversity_min_dist:.2f}")
-        print(f"  snapping: explore={snap_norm_step_explore}, refine={snap_norm_step_refine}")
-        print(f"  explore solver: max_newton_iter={explore_max_newton_iter}, newton_tol={explore_newton_tol}")
-        print(f"  refine  solver: max_newton_iter={refine_max_newton_iter}, newton_tol={refine_newton_tol}")
+                print(f'    {k} = {lo} (fixed)')
+        print(f'  exploration cases: ALL ({len(cases)})')
+        print(
+            f'  explore: samples={explore_samples}, keep={explore_keep}, local_frac={explore_local_frac:.2f}, local_sigma={explore_local_sigma:.2f}'
+        )
+        print(f'  starts: n_starts={n_starts}, diversity_min_dist={diversity_min_dist:.2f}')
+        print(f'  snapping: explore={snap_norm_step_explore}, refine={snap_norm_step_refine}')
+        print(
+            f'  explore solver: max_newton_iter={explore_max_newton_iter}, newton_tol={explore_newton_tol}'
+        )
+        print(
+            f'  refine  solver: max_newton_iter={refine_max_newton_iter}, newton_tol={refine_newton_tol}'
+        )
 
     # -------------------------
     # Exploration (ALL cases)
@@ -475,7 +481,7 @@ def calibrate_model_peaks_joint(
         z0 = _norm01(x0_int_full)[enabled_idx]
         z = z0 + rng.normal(0.0, explore_local_sigma, size=z0.size)
         z = np.clip(z, 0.0, 1.0)
-        denom = (hi_int_full - lo_int_full)
+        denom = hi_int_full - lo_int_full
         denom = np.where(denom == 0.0, 1.0, denom)
         x[enabled_idx] = lo_int_full[enabled_idx] + z * denom[enabled_idx]
         return x
@@ -485,7 +491,7 @@ def calibrate_model_peaks_joint(
     # Baseline evaluation
     res0, cost0, det0, p0, _ek0 = _evaluate_all_cases(
         x0_int_full,
-        stage="explore",
+        stage='explore',
         snap_step=snap_norm_step_explore,
         max_newton_iter=explore_max_newton_iter,
         newton_tol=explore_newton_tol,
@@ -496,22 +502,22 @@ def calibrate_model_peaks_joint(
     best_x = x0_int_full.copy()
 
     if verbose:
-        print(f"[explore] 0/{explore_samples} cost={cost0:.6f} best={best_cost:.6f}")
-        print(f"  baseline params: {_format_param_line(p0, base_keys)}")
-        print("  baseline residuals:")
+        print(f'[explore] 0/{explore_samples} cost={cost0:.6f} best={best_cost:.6f}')
+        print(f'  baseline params: {_format_param_line(p0, base_keys)}')
+        print('  baseline residuals:')
         _print_case_details(det0)
 
     for i in range(1, explore_samples + 1):
         if rng.random() < explore_local_frac:
             x = _sample_local()
-            mode = "local"
+            mode = 'local'
         else:
             x = _sample_global()
-            mode = "global"
+            mode = 'global'
 
         res, cost, details, p, _ek = _evaluate_all_cases(
             x,
-            stage="explore",
+            stage='explore',
             snap_step=snap_norm_step_explore,
             max_newton_iter=explore_max_newton_iter,
             newton_tol=explore_newton_tol,
@@ -526,26 +532,26 @@ def calibrate_model_peaks_joint(
             improved = True
 
         print(
-            f"[explore] {i}/{explore_samples} mode={mode} cost={cost:.6f} best={best_cost:.6f} "
-            f"{'IMPROVED' if improved else ''}".rstrip()
+            f'[explore] {i}/{explore_samples} mode={mode} cost={cost:.6f} best={best_cost:.6f} '
+            f'{"IMPROVED" if improved else ""}'.rstrip()
         )
-        print(f"  params: {_format_param_line(p, base_keys)}")
-        print("  residuals:")
+        print(f'  params: {_format_param_line(p, base_keys)}')
+        print('  residuals:')
         _print_case_details(details)
 
         if improved:
             res_b, cost_b, det_b, p_b, _ = _evaluate_all_cases(
                 best_x,
-                stage="explore",
+                stage='explore',
                 snap_step=snap_norm_step_explore,
                 max_newton_iter=explore_max_newton_iter,
                 newton_tol=explore_newton_tol,
                 want_details=True,
             )
-            print("  ----")
-            print(f"  NEW BEST cost={cost_b:.6f}")
-            print(f"  NEW BEST params: {_format_param_line(p_b, base_keys)}")
-            print("  NEW BEST residuals:")
+            print('  ----')
+            print(f'  NEW BEST cost={cost_b:.6f}')
+            print(f'  NEW BEST params: {_format_param_line(p_b, base_keys)}')
+            print('  NEW BEST residuals:')
             _print_case_details(det_b)
 
     explored.sort(key=lambda t: t[0])
@@ -577,9 +583,11 @@ def calibrate_model_peaks_joint(
 
     if verbose:
         best_p = _params_dict_from_int_full(_snap_int_full(pool[0][1], snap_norm_step_explore))
-        print(f"[seeds] pool_n={len(pool)}, selected_seeds={len(seeds_full)} (requested n_starts={n_starts})")
-        print(f"[seeds] best explore params: {_format_param_line(best_p, base_keys)}")
-        print(f"[seeds] best explore cost: {pool[0][0]:.6f}")
+        print(
+            f'[seeds] pool_n={len(pool)}, selected_seeds={len(seeds_full)} (requested n_starts={n_starts})'
+        )
+        print(f'[seeds] best explore params: {_format_param_line(best_p, base_keys)}')
+        print(f'[seeds] best explore cost: {pool[0][0]:.6f}')
 
     # -------------------------
     # Refinement (least_squares per seed)
@@ -603,19 +611,25 @@ def calibrate_model_peaks_joint(
 
         if verbose:
             p_seed = _params_dict_from_int_full(_snap_int_full(x_seed_full, snap_norm_step_refine))
-            print(f"\n=== Refinement start {start_i + 1}/{len(seeds_full)} ===")
-            print(f"  seed params: {_format_param_line(p_seed, base_keys)}")
-            print(f"  refine snap step: {snap_norm_step_refine}")
+            print(f'\n=== Refinement start {start_i + 1}/{len(seeds_full)} ===')
+            print(f'  seed params: {_format_param_line(p_seed, base_keys)}')
+            print(f'  refine snap step: {snap_norm_step_refine}')
 
         def residuals(x_var: np.ndarray) -> np.ndarray:
-            nonlocal eval_count, unique_key_count, prev_key, prev_cost_at_key, stall_count, best_state
+            nonlocal \
+                eval_count, \
+                unique_key_count, \
+                prev_key, \
+                prev_cost_at_key, \
+                stall_count, \
+                best_state
 
             x_full = x0_int_full.copy()
             x_full[enabled_idx] = x_var
 
             res, cost, details, p, ekey = _evaluate_all_cases(
                 x_full,
-                stage="refine",
+                stage='refine',
                 snap_step=snap_norm_step_refine,
                 max_newton_iter=refine_max_newton_iter,
                 newton_tol=refine_newton_tol,
@@ -623,7 +637,7 @@ def calibrate_model_peaks_joint(
             )
 
             eval_count += 1
-            new_key = (ekey != prev_key)
+            new_key = ekey != prev_key
 
             if new_key:
                 unique_key_count += 1
@@ -640,22 +654,24 @@ def calibrate_model_peaks_joint(
                 best_state = (p.copy(), cost, res.copy())
 
             # You asked for lots of debug: print every evaluation.
-            print(f"\n--- Start {start_i + 1}, Eval {eval_count} (unique_keys={unique_key_count}) ---")
-            print(f"  Params: {_format_param_line(p, base_keys)}")
-            print("  Residuals per case:")
+            print(
+                f'\n--- Start {start_i + 1}, Eval {eval_count} (unique_keys={unique_key_count}) ---'
+            )
+            print(f'  Params: {_format_param_line(p, base_keys)}')
+            print('  Residuals per case:')
             _print_case_details(details)
             if new_key:
-                print(f"  Cost: {cost:.6f}  stall={stall_count}/{stall_iters}  (key changed)")
+                print(f'  Cost: {cost:.6f}  stall={stall_count}/{stall_iters}  (key changed)')
             else:
-                print(f"  Cost: {cost:.6f}  stall={stall_count}/{stall_iters}  (same key)")
+                print(f'  Cost: {cost:.6f}  stall={stall_count}/{stall_iters}  (same key)')
 
             print(
-                f"  Cache sizes: model_cache={len(model_cache)} "
-                f"refine_peak_cache={len(refine_peak_cache)} refine_settle_cache={len(refine_settle_cache)}"
+                f'  Cache sizes: model_cache={len(model_cache)} '
+                f'refine_peak_cache={len(refine_peak_cache)} refine_settle_cache={len(refine_settle_cache)}'
             )
 
             if stall_count >= stall_iters:
-                raise EarlyStopException()
+                raise EarlyStopException
 
             return res
 
@@ -674,7 +690,7 @@ def calibrate_model_peaks_joint(
             # Evaluate final at snapped refine resolution for reporting consistency
             res_f, cost_f, _details_f, p_f, _ek_f = _evaluate_all_cases(
                 x_full,
-                stage="refine",
+                stage='refine',
                 snap_step=snap_norm_step_refine,
                 max_newton_iter=refine_max_newton_iter,
                 newton_tol=refine_newton_tol,
@@ -690,13 +706,13 @@ def calibrate_model_peaks_joint(
 
         except EarlyStopException:
             if verbose:
-                print(f"\n  -> Early stop: cost stalled for {stall_iters} unique-key steps")
+                print(f'\n  -> Early stop: cost stalled for {stall_iters} unique-key steps')
 
             if best_state is None:
                 # fallback: evaluate seed once
                 res_f, cost_f, _details_f, p_f, _ek_f = _evaluate_all_cases(
                     x0_int_full,
-                    stage="refine",
+                    stage='refine',
                     snap_step=snap_norm_step_refine,
                     max_newton_iter=refine_max_newton_iter,
                     newton_tol=refine_newton_tol,
@@ -716,12 +732,12 @@ def calibrate_model_peaks_joint(
             best_result = result
 
         if verbose:
-            print(f"\n=== Refinement end {start_i + 1}/{len(seeds_full)} ===")
-            print(f"  best cost so far = {best_result.cost:.6f}")
-            print(f"  best params so far: {_format_param_line(best_result.params, base_keys)}")
+            print(f'\n=== Refinement end {start_i + 1}/{len(seeds_full)} ===')
+            print(f'  best cost so far = {best_result.cost:.6f}')
+            print(f'  best params so far: {_format_param_line(best_result.params, base_keys)}')
 
     if best_result is None:
-        raise RuntimeError("Calibration failed to produce any result.")
+        raise RuntimeError('Calibration failed to produce any result.')
 
     return best_result
 
@@ -742,25 +758,25 @@ def calibrate_model_curves_joint(
     Disabled parameters (lo == hi) are removed from optimization automatically.
     """
     if not cases:
-        raise ValueError("No calibration cases provided.")
+        raise ValueError('No calibration cases provided.')
 
     base_keys = [
-        "s_k_spine",
-        "s_c_spine",
-        "buttocks_k_n_per_m",
-        "buttocks_c_ns_per_m",
-        "buttocks_limit_mm",
+        's_k_spine',
+        's_c_spine',
+        'buttocks_k_n_per_m',
+        'buttocks_c_ns_per_m',
+        'buttocks_limit_mm',
     ]
 
     def _key_sort(k: str) -> tuple:
         if k in base_keys:
             return (0, base_keys.index(k), k)
-        if k in ("c_base_ns_per_m", "disc_poly_k2_n_per_m2", "disc_poly_k3_n_per_m3"):
+        if k in ('c_base_ns_per_m', 'disc_poly_k2_n_per_m2', 'disc_poly_k3_n_per_m3'):
             return (1, k, k)
-        if k.startswith("maxwell_k_ratio_"):
-            return (2, int(k.split("_")[-1]), k)
-        if k.startswith("maxwell_tau_ms_"):
-            return (3, int(k.split("_")[-1]), k)
+        if k.startswith('maxwell_k_ratio_'):
+            return (2, int(k.split('_')[-1]), k)
+        if k.startswith('maxwell_tau_ms_'):
+            return (3, int(k.split('_')[-1]), k)
         return (9, k, k)
 
     all_keys = sorted(bounds.keys(), key=_key_sort)
@@ -781,7 +797,7 @@ def calibrate_model_curves_joint(
         lo[i] = float(bounds[k][0])
         hi[i] = float(bounds[k][1])
         if hi[i] < lo[i]:
-            raise ValueError(f"Invalid bounds for {k}: [{lo[i]}, {hi[i]}]")
+            raise ValueError(f'Invalid bounds for {k}: [{lo[i]}, {hi[i]}]')
         x0[i] = float(init_params[k])
         if lo[i] > 0.0 and hi[i] > 0.0:
             use_log[i] = True
