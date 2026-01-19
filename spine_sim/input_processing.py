@@ -89,7 +89,9 @@ def process_input(
     if len(t_seg) < desired_n:
         pad_n = desired_n - len(t_seg)
         t_seg = np.concatenate([t_seg, t_seg[-1] + dt * (np.arange(pad_n) + 1)])
-        a_seg = np.concatenate([a_seg, -1.0 * np.ones(pad_n)])
+        # Pad with 0g (at rest on seat) rather than -1g (freefall)
+        # After impact, subject is seated, not in continued freefall
+        a_seg = np.concatenate([a_seg, np.zeros(pad_n)])
 
     return t_seg, a_seg, {"style": "drop", "dt_s": dt, "sample_rate_hz": sample_rate,
                           "bias_applied": applied, "bias_g": bias,

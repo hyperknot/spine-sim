@@ -32,25 +32,22 @@ def _build_spine_model(mass_map: dict, config: dict, model_key: str) -> SpineMod
 
     Shared implementation for both 'maxwell' and 'zwt' model types.
     The only difference is which config section is read.
+
+    Note: Buttocks parameters (k, c, densification) are set by Toen calibration
+    via apply_toen_buttocks_to_model(). This function only sets structural flags.
     """
     cfg = config.get(model_key, config.get('maxwell', config.get('nonlinear', {})))
 
     c_base = float(cfg.get('c_base_ns_per_m', 1200.0))
     node_names, masses, element_names, k_elem, c_elem = build_spine_elements(mass_map, c_base)
 
-    butt_gap_mm = float(cfg.get('buttocks_gap_mm', 0.0))
-
-    # Polynomial coefficients (ZWT style)
+    # Polynomial coefficients for spine (ZWT style) - buttocks uses Toen, not polynomials
     disc_k2 = float(cfg.get('disc_poly_k2_n_per_m2', 0.0))
     disc_k3 = float(cfg.get('disc_poly_k3_n_per_m3', 0.0))
-    butt_k2 = float(cfg.get('buttocks_poly_k2_n_per_m2', 0.0))
-    butt_k3 = float(cfg.get('buttocks_poly_k3_n_per_m3', 0.0))
 
-    # Reference-compression multiplier nonlinearity (fallback when no polynomial)
+    # Reference-compression multiplier nonlinearity for spine elements
     disc_ref_mm = float(cfg.get('disc_ref_compression_mm', 2.0))
     disc_kmult = float(cfg.get('disc_k_mult_at_ref', 8.0))
-    butt_ref_mm = float(cfg.get('buttocks_ref_compression_mm', 25.0))
-    butt_kmult = float(cfg.get('buttocks_k_mult_at_ref', 20.0))
 
     n_elem = len(k_elem)
     compression_ref_m = np.zeros(n_elem, dtype=float)
@@ -60,24 +57,23 @@ def _build_spine_model(mass_map: dict, config: dict, model_key: str) -> SpineMod
     damping_compression_only = np.zeros(n_elem, dtype=bool)
     gap_m = np.zeros(n_elem, dtype=float)
 
-    # Buttocks element (index 0)
+    # Buttocks element (index 0) - structural flags only, k/c/densification set by Toen
     compression_only[0] = True
     damping_compression_only[0] = True
-    gap_m[0] = butt_gap_mm / 1000.0
-    compression_ref_m[0] = butt_ref_mm / 1000.0
-    compression_k_mult[0] = butt_kmult
+    # gap_m[0], compression_ref_m[0], compression_k_mult[0] left at defaults (0, 0, 1)
+    # since Toen uses densification (limit/stop_k) instead of multiplier nonlinearity
 
     # Spine elements (index 1+)
     compression_ref_m[1:] = disc_ref_mm / 1000.0
     compression_k_mult[1:] = disc_kmult
 
-    # Polynomial arrays (only if non-zero)
+    # Polynomial arrays - only for spine elements if non-zero
     poly_k2 = None
     poly_k3 = None
-    if any(abs(x) > 0.0 for x in [disc_k2, disc_k3, butt_k2, butt_k3]):
+    if any(abs(x) > 0.0 for x in [disc_k2, disc_k3]):
         poly_k2 = np.zeros(n_elem, dtype=float)
         poly_k3 = np.zeros(n_elem, dtype=float)
-        poly_k2[0], poly_k3[0] = butt_k2, butt_k3
+        # poly_k2[0], poly_k3[0] = 0 (buttocks uses Toen densification, not polynomial)
         poly_k2[1:], poly_k3[1:] = disc_k2, disc_k3
 
     # Maxwell branches

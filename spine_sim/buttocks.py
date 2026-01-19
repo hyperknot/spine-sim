@@ -42,17 +42,32 @@ def get_toen_buttocks_params(config: dict) -> dict | None:
 
 
 def apply_toen_buttocks_to_model(model: SpineModel, toen_params: dict) -> SpineModel:
-    """Apply Toen-calibrated buttocks parameters to spine model."""
+    """Apply Toen-calibrated buttocks parameters to spine model.
+
+    Updates k, c, and densification parameters for the buttocks element (index 0).
+    Also scales maxwell branch stiffnesses proportionally to the new k.
+    """
     if toen_params is None:
         return model
 
     k_elem = model.k_elem.copy()
     c_elem = model.c_elem.copy()
 
+    # Scale factor for maxwell branches (ratio of new k to old k)
+    k_scale = 1.0
     if toen_params.get("k") is not None:
-        k_elem[0] = float(toen_params["k"])
+        new_k = float(toen_params["k"])
+        if k_elem[0] > 0:
+            k_scale = new_k / k_elem[0]
+        k_elem[0] = new_k
     if toen_params.get("c") is not None:
         c_elem[0] = float(toen_params["c"])
+
+    # Scale maxwell branches for buttocks element
+    maxwell_k = model.maxwell_k
+    if maxwell_k is not None and maxwell_k.size > 0 and k_scale != 1.0:
+        maxwell_k = maxwell_k.copy()
+        maxwell_k[0, :] *= k_scale
 
     limit_m = model.compression_limit_m
     stop_k = model.compression_stop_k
@@ -91,7 +106,7 @@ def apply_toen_buttocks_to_model(model: SpineModel, toen_params: dict) -> SpineM
         compression_only=model.compression_only,
         damping_compression_only=model.damping_compression_only,
         gap_m=model.gap_m,
-        maxwell_k=model.maxwell_k,
+        maxwell_k=maxwell_k,
         maxwell_tau_s=model.maxwell_tau_s,
         maxwell_compression_only=model.maxwell_compression_only,
         poly_k2=model.poly_k2,
