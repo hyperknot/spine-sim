@@ -15,29 +15,22 @@ from spine_sim.toen_targets import TOEN_FLOOR_STIFFNESS_N_PER_M
 
 
 def get_toen_buttocks_params(config: dict) -> dict | None:
-    """Load Toen calibration if available and matching target_set."""
+    """Load Toen calibration if available."""
     bcfg = config.get("buttock", {})
-    target_set = str(bcfg.get("target_set", "avg")).lower()
-    if target_set == "fig3":
-        target_set = "subj3"
 
     if not bcfg.get("use_saved_calibration", True):
         return None
 
-    doc, path = load_toen_drop_calibration()
+    doc, _path = load_toen_drop_calibration()
     if doc is None:
         return None
 
-    r = doc.get("result", {})
-    if str(r.get("target_set", "")).lower() != target_set:
-        return None
-
     return {
-        "k": r.get("buttocks_k_n_per_m"),
-        "c": r.get("buttocks_c_ns_per_m"),
-        "limit_mm": r.get("buttocks_limit_mm"),
-        "stop_k": r.get("buttocks_stop_k_n_per_m"),
-        "smoothing_mm": r.get("buttocks_stop_smoothing_mm"),
+        "k": doc.get("buttocks_k_n_per_m"),
+        "c": doc.get("buttocks_c_ns_per_m"),
+        "limit_mm": doc.get("buttocks_limit_mm"),
+        "stop_k": doc.get("buttocks_stop_k_n_per_m"),
+        "smoothing_mm": doc.get("buttocks_stop_smoothing_mm"),
     }
 
 

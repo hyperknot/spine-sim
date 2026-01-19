@@ -72,7 +72,8 @@ def process_input(
         if len(t_seg) < desired_n:
             pad_n = desired_n - len(t_seg)
             t_seg = np.concatenate([t_seg, t_seg[-1] + dt * (np.arange(pad_n) + 1)])
-            a_seg = np.concatenate([a_seg, np.zeros(pad_n)])
+            # Pad with -1g (freefall) after pulse ends
+            a_seg = np.concatenate([a_seg, -1.0 * np.ones(pad_n)])
         return t_seg, a_seg, {"style": "flat", "dt_s": dt, "sample_rate_hz": sample_rate,
                               "bias_applied": False, "bias_g": 0.0,
                               "duration_ms": total_ms, "raw_min_g": raw_min_g, "raw_max_g": raw_max_g}
@@ -89,9 +90,8 @@ def process_input(
     if len(t_seg) < desired_n:
         pad_n = desired_n - len(t_seg)
         t_seg = np.concatenate([t_seg, t_seg[-1] + dt * (np.arange(pad_n) + 1)])
-        # Pad with 0g (at rest on seat) rather than -1g (freefall)
-        # After impact, subject is seated, not in continued freefall
-        a_seg = np.concatenate([a_seg, np.zeros(pad_n)])
+        # Pad with -1g (freefall) after impact ends
+        a_seg = np.concatenate([a_seg, -1.0 * np.ones(pad_n)])
 
     return t_seg, a_seg, {"style": "drop", "dt_s": dt, "sample_rate_hz": sample_rate,
                           "bias_applied": applied, "bias_g": bias,

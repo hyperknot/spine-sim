@@ -38,9 +38,8 @@ def run_calibrate_buttocks(echo=print) -> dict:
         buttocks_stop_smoothing_mm=float(dens.get("smoothing_mm", 1.0)),
     )
 
-    out_path = write_toen_drop_calibration(result, active=True)
+    out_path = write_toen_drop_calibration(result)
     echo(f"Calibration saved: {out_path}")
-    echo(json.dumps(result, indent=2))
     return result
 
 
@@ -72,15 +71,12 @@ def run_simulate_buttocks(echo=print) -> list[dict]:
     if bcfg.get("use_saved_calibration", True):
         doc, path = load_toen_drop_calibration()
         if doc is not None:
-            r = doc.get("result", {})
-            saved_target = str(r.get("target_set", "")).lower()
-            if saved_target == target_set:
-                butt_k = r.get("buttocks_k_n_per_m")
-                butt_c = r.get("buttocks_c_ns_per_m")
-                butt_limit_mm = float(r.get("buttocks_limit_mm", butt_limit_mm))
-                butt_stop_k = float(r.get("buttocks_stop_k_n_per_m", butt_stop_k))
-                butt_smooth_mm = float(r.get("buttocks_stop_smoothing_mm", butt_smooth_mm))
-                echo(f"Loaded calibration from {path}")
+            butt_k = doc.get("buttocks_k_n_per_m")
+            butt_c = doc.get("buttocks_c_ns_per_m")
+            butt_limit_mm = float(doc.get("buttocks_limit_mm", butt_limit_mm))
+            butt_stop_k = float(doc.get("buttocks_stop_k_n_per_m", butt_stop_k))
+            butt_smooth_mm = float(doc.get("buttocks_stop_smoothing_mm", butt_smooth_mm))
+            echo(f"Loaded calibration from {path}")
 
     subjects = ["avg", "3"] if subject == "both" else [subject]
     out_dir = resolve_path(str(bcfg.get("output_dir", "output/toen_drop")))

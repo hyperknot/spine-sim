@@ -13,13 +13,11 @@ def load_toen_drop_calibration() -> tuple[dict | None, Path]:
     doc = json.loads(TOEN_DROP_FILE.read_text(encoding="utf-8"))
     if not isinstance(doc, dict):
         return None, TOEN_DROP_FILE
-    if not bool(doc.get("active", True)):
-        return None, TOEN_DROP_FILE
     return doc, TOEN_DROP_FILE
 
 
-def write_toen_drop_calibration(result: dict, *, active: bool = True) -> Path:
+def write_toen_drop_calibration(params: dict) -> Path:
+    """Write buttocks calibration parameters directly to file."""
     TOEN_DROP_FILE.parent.mkdir(parents=True, exist_ok=True)
-    doc = {"active": bool(active), "result": result}
-    TOEN_DROP_FILE.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    TOEN_DROP_FILE.write_text(json.dumps(params, indent=2) + "\n", encoding="utf-8")
     return TOEN_DROP_FILE

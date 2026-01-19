@@ -1,35 +1,7 @@
 {
-  "active": true,
-  "result": {
-    "subject_id": "avg",
-    "target_set": "avg",
-    "male50_mass_kg": 75.4,
-    "subject_total_mass_kg": 80.7,
-    "torso_mass_kg": 57.80645888594164,
-    "impact_velocity_mps": 3.5,
-    "calib_floors": [
-      "firm_95",
-      "rigid_400"
-    ],
-    "buttocks_k_n_per_m": 99244.51743130326,
-    "buttocks_c_ns_per_m": 2610.4882401576187,
-    "buttocks_limit_mm": 44.98692532688622,
-    "buttocks_stop_k_n_per_m": 5000000.0,
-    "buttocks_stop_smoothing_mm": 1.0,
-    "rigid_400_check": {
-      "peak_ground_kN": 7.976335982793412,
-      "t_peak_ms": 17.5,
-      "max_buttocks_comp_mm": 44.99455151821775,
-      "static_buttocks_comp_mm": 5.712030495046918,
-      "delta_buttocks_comp_mm": 39.28252102317083
-    },
-    "success": true,
-    "cost": 0.0030645584020005177,
-    "residual_norm": 0.07828867609048601,
-    "nfev": 42,
-    "limit_bounds_mm": [
-      30.0,
-      45.0
-    ]
-  }
+  "buttocks_k_n_per_m": 99244.51743130326,
+  "buttocks_c_ns_per_m": 2610.4882401576187,
+  "buttocks_limit_mm": 44.98692532688622,
+  "buttocks_stop_k_n_per_m": 5000000.0,
+  "buttocks_stop_smoothing_mm": 1.0
 }

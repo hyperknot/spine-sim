@@ -586,36 +586,30 @@ def calibrate_toen_buttocks_model(
         max_newton_iter=10,
     )
 
-    # Calibration-time-only reference reporting is done here (not in run_toen_suite).
-    print("\n=== CALIBRATION REFERENCE (rigid_400 @ 3.5 m/s) ===")
-    print(f"  static_buttocks_comp_mm: {r_rigid.static_buttocks_comp_mm:.3f}")
-    print(f"  max_buttocks_comp_mm:    {r_rigid.max_buttocks_comp_mm:.3f}")
-    print(f"  delta_comp_mm:           {r_rigid.delta_buttocks_comp_mm:.3f}")
-    print(f"  limit_mm:                {limit_mm:.3f}")
+    # Print calibration debug info to console
+    print("\n=== CALIBRATION RESULT ===")
+    print(f"  subject_id: {subject_id}")
+    print(f"  target_set: {target_set}")
+    print(f"  male50_mass_kg: {male50_mass_kg:.2f}")
+    print(f"  subject_total_mass_kg: {subj.total_mass_kg:.2f}")
+    print(f"  torso_mass_kg: {torso_mass:.2f}")
+    print(f"  impact_velocity_mps: {v0_mps}")
+    print(f"  calib_floors: {calib_floors}")
+    print(f"  limit_bounds_mm: [{limit_bounds[0]}, {limit_bounds[1]}]")
+    print(f"\n  Optimizer: success={out.success}, cost={out.cost:.6f}, "
+          f"residual_norm={np.linalg.norm(out.fun):.6f}, nfev={out.nfev}")
+    print(f"\n  rigid_400 check @ {v0_mps} m/s:")
+    print(f"    peak_ground_kN: {r_rigid.peak_ground_kN:.3f}")
+    print(f"    t_peak_ms: {r_rigid.t_peak_ms:.1f}")
+    print(f"    max_buttocks_comp_mm: {r_rigid.max_buttocks_comp_mm:.3f}")
+    print(f"    static_buttocks_comp_mm: {r_rigid.static_buttocks_comp_mm:.3f}")
+    print(f"    delta_buttocks_comp_mm: {r_rigid.delta_buttocks_comp_mm:.3f}")
 
+    # Return only essential calibration parameters
     return {
-        "subject_id": subject_id,
-        "target_set": target_set,
-        "male50_mass_kg": float(male50_mass_kg),
-        "subject_total_mass_kg": float(subj.total_mass_kg),
-        "torso_mass_kg": float(torso_mass),
-        "impact_velocity_mps": float(v0_mps),
-        "calib_floors": calib_floors,
         "buttocks_k_n_per_m": float(k_butt),
         "buttocks_c_ns_per_m": float(c_butt),
         "buttocks_limit_mm": float(limit_mm),
         "buttocks_stop_k_n_per_m": float(buttocks_stop_k_n_per_m),
         "buttocks_stop_smoothing_mm": float(buttocks_stop_smoothing_mm),
-        "rigid_400_check": {
-            "peak_ground_kN": float(r_rigid.peak_ground_kN),
-            "t_peak_ms": float(r_rigid.t_peak_ms),
-            "max_buttocks_comp_mm": float(r_rigid.max_buttocks_comp_mm),
-            "static_buttocks_comp_mm": float(r_rigid.static_buttocks_comp_mm),
-            "delta_buttocks_comp_mm": float(r_rigid.delta_buttocks_comp_mm),
-        },
-        "success": bool(out.success),
-        "cost": float(out.cost),
-        "residual_norm": float(np.linalg.norm(out.fun)),
-        "nfev": int(out.nfev),
-        "limit_bounds_mm": [float(limit_bounds[0]), float(limit_bounds[1])],
     }

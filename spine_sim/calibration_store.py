@@ -14,20 +14,12 @@ def calibration_file(model_type: str) -> Path:
     return CALIBRATION_ROOT / f'{model_type}.json'
 
 
-def _default_section(default_scales: dict) -> dict:
-    return {
-        'scales': {k: float(v) for k, v in default_scales.items()},
-        'result': {'success': False, 'cost': None, 'residual_norm': None},
-        'cases': [],
-    }
-
-
 def _default_doc(model_type: str, default_scales: dict) -> dict:
     return {
         'model': model_type,
         'active_mode': 'peaks',
-        'peaks': _default_section(default_scales),
-        'curves': _default_section(default_scales),
+        'peaks': {k: float(v) for k, v in default_scales.items()},
+        'curves': {k: float(v) for k, v in default_scales.items()},
     }
 
 
@@ -51,8 +43,7 @@ def load_calibration_scales(model_type: str, mode: str, default_scales: dict) ->
         raise ValueError(f"Unknown calibration mode '{mode}'. Use: {sorted(VALID_MODES)}")
 
     doc = load_calibration_doc(model_type, default_scales)
-    section = doc.get(mode, {})
-    scales = section.get('scales', None)
+    scales = doc.get(mode, {})
 
     if not isinstance(scales, dict):
         raise ValueError(f"Missing scales for {model_type} mode '{mode}' in calibration file.")
@@ -71,17 +62,16 @@ def write_calibration_result(
     if mode not in VALID_MODES:
         raise ValueError(f"Unknown calibration mode '{mode}'. Use: {sorted(VALID_MODES)}")
 
+    # Print debug info to console
+    print(f"\n=== CALIBRATION RESULT ({model_type}/{mode}) ===")
+    print(f"  success: {result.success}")
+    print(f"  cost: {result.cost}")
+    print(f"  residual_norm: {result.residual_norm}")
+    print(f"  cases: {cases}")
+
     doc = load_calibration_doc(model_type, default_scales)
     doc['active_mode'] = mode
-    doc[mode] = {
-        'scales': result.scales,
-        'result': {
-            'success': result.success,
-            'cost': result.cost,
-            'residual_norm': result.residual_norm,
-        },
-        'cases': cases,
-    }
+    doc[mode] = result.scales
 
     path = calibration_file(model_type)
     path.write_text(json.dumps(doc, indent=2) + '\n', encoding='utf-8')
