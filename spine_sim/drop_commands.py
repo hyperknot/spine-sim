@@ -38,7 +38,13 @@ from spine_sim.plotting import (
 from spine_sim.range import DEFAULT_FREEFALL_THRESHOLD_G, DEFAULT_PEAK_THRESHOLD_G
 
 
-CALIBRATION_CASE_NAMES = ['50ms', '75ms', '100ms', '150ms', '200ms']
+CALIBRATION_CASE_NAMES = [
+    # '50ms',
+    '75ms',
+    '100ms',
+    '150ms',
+    '200ms',
+]
 CALIBRATION_FORCE_SIGN = -1.0
 
 

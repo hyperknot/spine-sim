@@ -1,0 +1,27 @@
+{
+  "model": "zwt",
+  "active_mode": "peaks",
+  "peaks": {
+    "s_k_spine": 1.5,
+    "s_c_spine": 0.8796262119239091,
+    "buttocks_k_n_per_m": 173636.3235354175,
+    "buttocks_c_ns_per_m": 3379.4801817199386,
+    "buttocks_limit_mm": 44.99999999999999,
+    "c_base_ns_per_m": 1462.130320367041,
+    "disc_k_mult_at_ref": 19.409739007859194,
+    "disc_poly_k2_n_per_m2": 0.0,
+    "disc_poly_k3_n_per_m3": 1.1400000000000001,
+    "disc_ref_compression_mm": 1.0925551040265566,
+    "maxwell_k_ratio_0": 2.0,
+    "maxwell_k_ratio_1": 1.0,
+    "maxwell_tau_ms_0": 6.155722066724581,
+    "maxwell_tau_ms_1": 72.85169306370283
+  },
+  "curves": {
+    "s_k_spine": 1.0,
+    "s_c_spine": 1.0,
+    "buttocks_k_n_per_m": 180500.0,
+    "buttocks_c_ns_per_m": 3130.0,
+    "buttocks_limit_mm": 39.0
+  }
+}

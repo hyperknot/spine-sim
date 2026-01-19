@@ -50,6 +50,10 @@ def default_params_from_config(config: dict, model_key: str) -> dict:
     if not isinstance(init_butt, dict):
         raise ValueError('config.buttock.calibration.init must be an object/dict.')
 
+    cfg_root = config.get(model_key, {})
+    if not isinstance(cfg_root, dict):
+        raise ValueError(f'config.{model_key} must be an object/dict.')
+
     init_model = _get_model_calibration_init(config, model_key)
 
     ratios = init_model.get('maxwell_k_ratios', [1.0, 0.5])
@@ -61,6 +65,17 @@ def default_params_from_config(config: dict, model_key: str) -> dict:
     ratios = (ratios + [0.0] * B)[:B]
     taus = (taus + [0.0] * B)[:B]
 
+    # Seed disc nonlinearity shape params.
+    #
+    # Prefer calibration.init values if present; otherwise fall back to top-level config.{model_key}.disc_*.
+    # This keeps old configs working and ensures newly-added calibration params exist.
+    disc_ref_mm = float(
+        init_model.get('disc_ref_compression_mm', cfg_root.get('disc_ref_compression_mm', 2.0))
+    )
+    disc_kmult = float(
+        init_model.get('disc_k_mult_at_ref', cfg_root.get('disc_k_mult_at_ref', 8.0))
+    )
+
     params = {
         's_k_spine': 1.0,
         's_c_spine': 1.0,
@@ -68,6 +83,9 @@ def default_params_from_config(config: dict, model_key: str) -> dict:
         'buttocks_c_ns_per_m': float(_require_path(config, 'buttock.calibration.init.c_ns_per_m')),
         'buttocks_limit_mm': float(_require_path(config, 'buttock.calibration.init.limit_mm')),
         'c_base_ns_per_m': float(init_model.get('c_base_ns_per_m', 1200.0)),
+        # Newly optimizable:
+        'disc_ref_compression_mm': float(disc_ref_mm),
+        'disc_k_mult_at_ref': float(disc_kmult),
         'disc_poly_k2_n_per_m2': float(init_model.get('disc_poly_k2_n_per_m2', 0.0)),
         'disc_poly_k3_n_per_m3': float(init_model.get('disc_poly_k3_n_per_m3', 0.0)),
     }
@@ -120,8 +138,13 @@ def _build_spine_model(mass_map: dict, config: dict, model_key: str) -> SpineMod
     disc_k2 = float(init_model.get('disc_poly_k2_n_per_m2', 0.0))
     disc_k3 = float(init_model.get('disc_poly_k3_n_per_m3', 0.0))
 
-    disc_ref_mm = float(cfg_root.get('disc_ref_compression_mm', 2.0))
-    disc_kmult = float(cfg_root.get('disc_k_mult_at_ref', 8.0))
+    # Prefer calibration.init values if present; otherwise fall back to top-level config.{model_key}.disc_*.
+    disc_ref_mm = float(
+        init_model.get('disc_ref_compression_mm', cfg_root.get('disc_ref_compression_mm', 2.0))
+    )
+    disc_kmult = float(
+        init_model.get('disc_k_mult_at_ref', cfg_root.get('disc_k_mult_at_ref', 8.0))
+    )
 
     n_elem = len(k_elem)
     compression_ref_m = np.zeros(n_elem, dtype=float)
@@ -201,7 +224,8 @@ def apply_calibration(base_model: SpineModel, params: dict) -> SpineModel:
     Apply calibration params:
       - buttocks absolute params: k/c/limit
       - spine scale params: s_k_spine, s_c_spine
-      - optional model-specific: c_base, disc poly, maxwell branch ratios/tau
+      - optional model-specific: c_base, disc poly, maxwell branch ratios/tau,
+        disc_ref_compression_mm, disc_k_mult_at_ref
     """
     s_k_spine = float(params.get('s_k_spine', 1.0))
     s_c_spine = float(params.get('s_c_spine', 1.0))
@@ -235,6 +259,16 @@ def apply_calibration(base_model: SpineModel, params: dict) -> SpineModel:
 
     k[1:] *= s_k_spine
     c[1:] *= s_c_spine
+
+    # Apply disc "shape" params (these must affect model.compression_ref_m and model.compression_k_mult).
+    compression_ref_m = base_model.compression_ref_m.copy()
+    compression_k_mult = base_model.compression_k_mult.copy()
+
+    if n_elem > 1:
+        if 'disc_ref_compression_mm' in params:
+            compression_ref_m[1:] = float(params['disc_ref_compression_mm']) / 1000.0
+        if 'disc_k_mult_at_ref' in params:
+            compression_k_mult[1:] = float(params['disc_k_mult_at_ref'])
 
     mx_k = base_model.maxwell_k.copy()
     mx_tau_s = base_model.maxwell_tau_s.copy()
@@ -278,8 +312,8 @@ def apply_calibration(base_model: SpineModel, params: dict) -> SpineModel:
         element_names=base_model.element_names,
         k_elem=k,
         c_elem=c,
-        compression_ref_m=base_model.compression_ref_m,
-        compression_k_mult=base_model.compression_k_mult,
+        compression_ref_m=compression_ref_m,
+        compression_k_mult=compression_k_mult,
         tension_k_mult=base_model.tension_k_mult,
         compression_only=base_model.compression_only,
         damping_compression_only=base_model.damping_compression_only,

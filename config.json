@@ -45,7 +45,7 @@
       {
         "k_n_per_m": 180500.0,
         "c_ns_per_m": 3130.0,
-        "limit_mm": 39.0
+        "limit_mm": 39
       },
       "bounds":
       {
@@ -112,12 +112,12 @@
         "disc_poly_k2_n_per_m2":
         [
           0.0,
-          1
+          2
         ],
         "disc_poly_k3_n_per_m3":
         [
           0.0,
-          0
+          2
         ],
         "maxwell_k_ratios":
         [
