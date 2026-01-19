@@ -332,7 +332,7 @@ def calibrate_peaks(
     init_params: dict,
     bounds: dict[str, tuple[float, float]],
     verbose: bool = True,
-    n_starts: int = 5,
+    n_starts: int = 10,
     cost_tol: float = 1e-4,
     stall_iters: int = 10,
 ) -> CalibrationResult:
@@ -348,9 +348,9 @@ def calibrate_peaks(
         n_starts=n_starts,
         cost_tol=cost_tol,
         stall_iters=stall_iters,
-        explore_samples=200,
+        explore_samples=60,
         explore_keep=40,
-        diversity_min_dist=0.25,
+        diversity_min_dist=0.35,
         snap_norm_step=0.02,
         cache_norm_step=0.02,
     )
