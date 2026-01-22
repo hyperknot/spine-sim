@@ -336,6 +336,7 @@ def run_simulate_drop(
                 'peak_T12L1_kN': peak_t12_kN,
                 'time_to_peak_ms': t_peak_ms,
                 'max_spine_shortening_mm': max_spine_shortening_mm,
+                'bottom_out_compression_mm': round(x0_mm, 3),
                 'buttocks': {
                     'k1_n_per_m': model.buttocks_k1_n_per_m,
                     'k2_n_per_m': model.buttocks_k2_n_per_m,
