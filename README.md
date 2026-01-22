@@ -29,11 +29,12 @@ We explicitly do *not* try to match any Yoganandan reference targets in this sim
 A serial chain of masses connected by 1D elements:
 
 ```
-[Base/Seat Plate] --(buttocks contact)--> pelvis -- L5 -- ... -- T1 -- C7 -- ... -- C1 -- HEAD
+[Base/Seat Plate] --(buttocks contact)--> pelvis -- L5 -- ... -- T1 -- HEAD
 ```
 
 - Nodes are lumped masses from an OpenSim body-mass JSON (`opensim/fullbody.json`).
-- Cervical nodes C1..C7 are explicit in this simplified version. Because OpenSim does not provide separate cervical vertebra masses in this file, we allocate a small configurable mass to each cervical vertebra and subtract it from the head/neck lump mass.
+- The OpenSim file used here provides `head_neck` as a single lump; we treat that as the `HEAD` node (optionally adding helmet mass + recruited arm mass per config).
+- Cervical vertebrae are **not** separate nodes in this simplified version.
 
 ---
 
