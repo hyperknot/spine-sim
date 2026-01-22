@@ -23,7 +23,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 8.914743990073356,
+      "max_eps_any_per_s": 8.891595837325772,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -163,7 +163,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 15.370566155399962,
+      "max_eps_any_per_s": 15.285276695508545,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -191,7 +191,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 16.120604958736465,
+      "max_eps_any_per_s": 16.03475897909554,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -303,7 +303,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 21.508641065520287,
+      "max_eps_any_per_s": 21.369560254625533,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -331,7 +331,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 22.73542911239523,
+      "max_eps_any_per_s": 22.607876863812898,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -443,7 +443,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 27.36128969923084,
+      "max_eps_any_per_s": 27.184240500597898,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -471,7 +471,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 29.14299741766851,
+      "max_eps_any_per_s": 28.984745737465857,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -499,7 +499,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 30.108820315551608,
+      "max_eps_any_per_s": 29.958714975537884,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -583,7 +583,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 32.93123051998127,
+      "max_eps_any_per_s": 32.76488784233867,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -611,7 +611,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 35.359728984831825,
+      "max_eps_any_per_s": 35.21694880115278,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -639,7 +639,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 36.64031851748147,
+      "max_eps_any_per_s": 36.515961813200676,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -723,7 +723,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 44.90781608741354,
+      "max_eps_any_per_s": 44.79982398651387,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -751,7 +751,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 52.031235808892774,
+      "max_eps_any_per_s": 51.99595806038974,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -779,7 +779,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 56.00782845712687,
+      "max_eps_any_per_s": 56.36384253580975,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -807,7 +807,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 58.09121281961239,
+      "max_eps_any_per_s": 58.76156845733594,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -835,7 +835,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 59.006864251704386,
+      "max_eps_any_per_s": 59.82069648448206,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -863,7 +863,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 69.45780733380744,
+      "max_eps_any_per_s": 72.2735521892639,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -891,7 +891,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 54.35088685326231,
+      "max_eps_any_per_s": 54.32136528082965,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -919,7 +919,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 62.779432011853174,
+      "max_eps_any_per_s": 63.499622902973954,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -947,7 +947,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 66.68564501816178,
+      "max_eps_any_per_s": 68.3589455061035,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -975,7 +975,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 68.63296613580629,
+      "max_eps_any_per_s": 71.04883058426624,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -1003,8 +1003,8 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 78.90483691807695,
-      "fraction_samples_over_warn": 0.00022362830345045318
+      "max_eps_any_per_s": 84.20283268708512,
+      "fraction_samples_over_warn": 0.0003683289703889817
     }
   },
   {
@@ -1031,7 +1031,7 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 60.438885879642264,
+      "max_eps_any_per_s": 61.50329077880252,
       "fraction_samples_over_warn": 0.0
     }
   },
@@ -1059,8 +1059,8 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 71.69491801830695,
-      "fraction_samples_over_warn": 0.0
+      "max_eps_any_per_s": 74.14504453634618,
+      "fraction_samples_over_warn": 7.892763651192465e-05
     }
   },
   {
@@ -1087,8 +1087,8 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 76.08400538886214,
-      "fraction_samples_over_warn": 0.0001578552730238493
+      "max_eps_any_per_s": 79.59255544573013,
+      "fraction_samples_over_warn": 0.0002630921217064155
     }
   },
   {
@@ -1115,8 +1115,8 @@
     },
     "strain_rate": {
       "warn_over_eps_per_s": 73.0,
-      "max_eps_any_per_s": 78.12646196865914,
-      "fraction_samples_over_warn": 0.00019731909127981162
+      "max_eps_any_per_s": 82.68361142698383,
+      "fraction_samples_over_warn": 0.00034201975821834016
     }
   }
 ]
