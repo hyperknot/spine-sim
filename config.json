@@ -10,7 +10,7 @@
     "newton_tol": 1e-9
   },
   "drop": {
-    "cfc": 75,
+    "cfc": 1000,
     "style_duration_threshold_ms": 300.0,
     "sim_duration_ms": 200.0,
     "gravity_settle_ms": 150.0,
@@ -35,6 +35,6 @@
     }
   },
   "plotting": {
-    "buttocks_height_mm": 90.0
+    "buttocks_height_mm": 50.0
   }
 }
