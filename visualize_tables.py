@@ -65,7 +65,7 @@ def process_json(json_path):
 
     # Fixed color scale: min from data, max fixed at 17
     vmin = np.nanmin(matrix)
-    vmax = 17.0
+    vmax = 16.0
 
     # Create figure with fixed size and layout
     fig = plt.figure(figsize=(8, 9))

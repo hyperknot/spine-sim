@@ -4,5 +4,6 @@ __pycache__
 
 papers
 output/*/
+output/*.png
 /.idea
 /.DS_Store
