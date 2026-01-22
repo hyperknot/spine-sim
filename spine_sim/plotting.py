@@ -35,6 +35,14 @@ def _build_height_map(
         'T3': 'thoracic3',
         'T2': 'thoracic2',
         'T1': 'thoracic1',
+        # OpenSim file does not provide cervical vertebra heights here; fall back to spacing
+        'C7': None,
+        'C6': None,
+        'C5': None,
+        'C4': None,
+        'C3': None,
+        'C2': None,
+        'C1': None,
         'HEAD': 'head_neck',
     }
 

@@ -2,20 +2,37 @@ from __future__ import annotations
 
 import numpy as np
 
+from spine_sim.model import SpineModel
 
-def build_spine_elements(
-    mass_map: dict,
-    c_base: float,
-) -> tuple[list[str], np.ndarray, list[str], np.ndarray, np.ndarray]:
+
+def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
     """
-    Build the common spine element definitions (names, masses, k, c).
+    Build the 1D axial chain model:
+      [Base] -- buttocks -- pelvis -- L5 -- ... -- T1 -- C7 -- ... -- C1 -- HEAD
 
-    Shared by all model paths (maxwell, zwt, etc.).
-
-    Note:
-      Buttocks k/c are initialized later from config.json in model_paths._build_spine_model().
-      Here we only set placeholders for element 0.
+    Disc baseline stiffnesses are from the Raj/Kitazaki distribution already embedded here.
+    Dynamic rate dependence (Kemper multiplier) is applied at runtime in spine_sim/model.py.
     """
+    spine_cfg = config.get('spine', {})
+    butt_cfg = config.get('buttock', {})
+
+    stiffness_scale = float(spine_cfg.get('stiffness_scale', 1.0))
+    if stiffness_scale <= 0.0:
+        raise ValueError('spine.stiffness_scale must be > 0.')
+
+    disc_height_mm = float(spine_cfg.get('disc_height_mm', 11.3))
+    if disc_height_mm <= 0.0:
+        raise ValueError('spine.disc_height_mm must be > 0.')
+
+    tension_k_mult = float(spine_cfg.get('tension_k_mult', 0.1))
+    if tension_k_mult < 0.0:
+        raise ValueError('spine.tension_k_mult must be >= 0.')
+
+    c_disc = float(spine_cfg.get('damping_ns_per_m', 1200.0))
+    if c_disc < 0.0:
+        raise ValueError('spine.damping_ns_per_m must be >= 0.')
+
+    # Nodes bottom-to-top
     node_names = [
         'pelvis',
         'L5',
@@ -35,88 +52,46 @@ def build_spine_elements(
         'T3',
         'T2',
         'T1',
+        'C7',
+        'C6',
+        'C5',
+        'C4',
+        'C3',
+        'C2',
+        'C1',
         'HEAD',
     ]
 
-    masses = np.array(
-        [
-            mass_map['pelvis'],
-            mass_map['l5'],
-            mass_map['l4'],
-            mass_map['l3'],
-            mass_map['l2'],
-            mass_map['l1'],
-            mass_map['t12'],
-            mass_map['t11'],
-            mass_map['t10'],
-            mass_map['t9'],
-            mass_map['t8'],
-            mass_map['t7'],
-            mass_map['t6'],
-            mass_map['t5'],
-            mass_map['t4'],
-            mass_map['t3'],
-            mass_map['t2'],
-            mass_map['t1'],
-            mass_map['head'],
-        ],
-        dtype=float,
-    )
+    masses = np.array([float(mass_map[n]) for n in node_names], dtype=float)
 
-    # Raj 2019 axial stiffnesses (N/m)
+    # Baseline axial stiffnesses (N/m): Raj/Kitazaki as in your original code
     k = {
-        'head-c1': 0.55e6,
-        'c1-c2': 0.3e6,
-        'c2-c3': 0.7e6,
-        'c3-c4': 0.76e6,
-        'c4-c5': 0.794e6,
-        'c5-c6': 0.967e6,
-        'c6-c7': 1.014e6,
-        'c7-t1': 1.334e6,
-        't1-t2': 0.7e6,
-        't2-t3': 1.2e6,
-        't3-t4': 1.5e6,
-        't4-t5': 2.1e6,
-        't5-t6': 1.9e6,
-        't6-t7': 1.8e6,
-        't7-t8': 1.5e6,
-        't8-t9': 1.5e6,
-        't9-t10': 1.5e6,
-        't10-t11': 1.5e6,
-        't11-t12': 1.5e6,
-        't12-l1': 1.8e6,
-        'l1-l2': 2.13e6,
-        'l2-l3': 2.0e6,
-        'l3-l4': 2.0e6,
-        'l4-l5': 1.87e6,
-        'l5-s1': 1.47e6,
+        'HEAD-C1': 0.55e6,
+        'C1-C2': 0.3e6,
+        'C2-C3': 0.7e6,
+        'C3-C4': 0.76e6,
+        'C4-C5': 0.794e6,
+        'C5-C6': 0.967e6,
+        'C6-C7': 1.014e6,
+        'C7-T1': 1.334e6,
+        'T1-T2': 0.7e6,
+        'T2-T3': 1.2e6,
+        'T3-T4': 1.5e6,
+        'T4-T5': 2.1e6,
+        'T5-T6': 1.9e6,
+        'T6-T7': 1.8e6,
+        'T7-T8': 1.5e6,
+        'T8-T9': 1.5e6,
+        'T9-T10': 1.5e6,
+        'T10-T11': 1.5e6,
+        'T11-T12': 1.5e6,
+        'T12-L1': 1.8e6,
+        'L1-L2': 2.13e6,
+        'L2-L3': 2.0e6,
+        'L3-L4': 2.0e6,
+        'L4-L5': 1.87e6,
+        'L5-S1': 1.47e6,
     }
-
-    cerv_keys = [
-        'head-c1',
-        'c1-c2',
-        'c2-c3',
-        'c3-c4',
-        'c4-c5',
-        'c5-c6',
-        'c6-c7',
-        'c7-t1',
-    ]
-    k_cerv_eq = 1.0 / sum(1.0 / k[key] for key in cerv_keys)
-
-    def c_disc(name: str) -> float:
-        if name in [
-            't10-t11',
-            't11-t12',
-            't12-l1',
-            'l1-l2',
-            'l2-l3',
-            'l3-l4',
-            'l4-l5',
-            'l5-s1',
-        ]:
-            return 3.0 * c_base
-        return c_base
 
     element_names = [
         'buttocks',
@@ -137,58 +112,58 @@ def build_spine_elements(
         'T3-T4',
         'T2-T3',
         'T1-T2',
-        'T1-HEAD',
+        'C7-T1',
+        'C6-C7',
+        'C5-C6',
+        'C4-C5',
+        'C3-C4',
+        'C2-C3',
+        'C1-C2',
+        'HEAD-C1',
     ]
 
-    # placeholders for buttocks; real values are injected from config later
-    k_elem = np.array(
-        [
-            1.0,  # buttocks placeholder
-            k['l5-s1'],
-            k['l4-l5'],
-            k['l3-l4'],
-            k['l2-l3'],
-            k['l1-l2'],
-            k['t12-l1'],
-            k['t11-t12'],
-            k['t10-t11'],
-            k['t9-t10'],
-            k['t8-t9'],
-            k['t7-t8'],
-            k['t6-t7'],
-            k['t5-t6'],
-            k['t4-t5'],
-            k['t3-t4'],
-            k['t2-t3'],
-            k['t1-t2'],
-            k_cerv_eq,
-        ],
-        dtype=float,
-    )
+    # Stiffness per element (element 0 is buttocks, filled from config)
+    k_elem = np.zeros(len(element_names), dtype=float)
+    k_elem[0] = 1.0  # placeholder; overwritten by buttocks config in SpineModel
+    for i, ename in enumerate(element_names[1:], start=1):
+        if ename not in k:
+            raise KeyError(f'Missing baseline stiffness for element: {ename}')
+        k_elem[i] = float(k[ename]) * stiffness_scale
 
-    c_elem = np.array(
-        [
-            0.0,  # buttocks placeholder
-            c_disc('l5-s1'),
-            c_disc('l4-l5'),
-            c_disc('l3-l4'),
-            c_disc('l2-l3'),
-            c_disc('l1-l2'),
-            c_disc('t12-l1'),
-            c_disc('t11-t12'),
-            c_disc('t10-t11'),
-            c_disc('t9-t10'),
-            c_disc('t8-t9'),
-            c_disc('t7-t8'),
-            c_disc('t6-t7'),
-            c_disc('t5-t6'),
-            c_disc('t4-t5'),
-            c_disc('t3-t4'),
-            c_disc('t2-t3'),
-            c_disc('t1-t2'),
-            c_base / len(cerv_keys),
-        ],
-        dtype=float,
-    )
+    c_elem = np.zeros(len(element_names), dtype=float)
+    c_elem[0] = 0.0  # buttocks filled from config
+    c_elem[1:] = c_disc
 
-    return node_names, masses, element_names, k_elem, c_elem
+    # Buttocks parameters (bilinear + contact)
+    butt_gap_mm = float(butt_cfg.get('gap_mm', 0.0))
+    k1 = float(butt_cfg.get('k1_n_per_m', 0.0))
+    c_butt = float(butt_cfg.get('c_ns_per_m', 0.0))
+    bottom_out_force_kN = float(butt_cfg.get('bottom_out_force_kN', 0.0))
+    k2 = float(butt_cfg.get('k2_n_per_m', 0.0))
+
+    if k1 <= 0.0:
+        raise ValueError('buttock.k1_n_per_m must be > 0.')
+    if k2 <= 0.0:
+        raise ValueError('buttock.k2_n_per_m must be > 0.')
+    if bottom_out_force_kN < 0.0:
+        raise ValueError('buttock.bottom_out_force_kN must be >= 0.')
+    if c_butt < 0.0:
+        raise ValueError('buttock.c_ns_per_m must be >= 0.')
+
+    return SpineModel(
+        node_names=node_names,
+        masses_kg=masses,
+        element_names=element_names,
+        k0_elem_n_per_m=k_elem,
+        c_elem_ns_per_m=c_elem,
+        disc_height_m=float(disc_height_mm) / 1000.0,
+        tension_k_mult=tension_k_mult,
+        buttocks_gap_m=float(butt_gap_mm) / 1000.0,
+        buttocks_k1_n_per_m=k1,
+        buttocks_k2_n_per_m=k2,
+        buttocks_bottom_out_force_n=float(bottom_out_force_kN) * 1000.0,
+        buttocks_c_ns_per_m=c_butt,
+        kemper_normalize_to_eps_per_s=float(spine_cfg.get('kemper', {}).get('normalize_to_eps_per_s', 0.0)),
+        strain_rate_smoothing_tau_s=float(spine_cfg.get('kemper', {}).get('strain_rate_smoothing_tau_ms', 2.0)) / 1000.0,
+        warn_over_eps_per_s=float(spine_cfg.get('kemper', {}).get('warn_over_eps_per_s', 73.0)),
+    )

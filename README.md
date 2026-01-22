@@ -1,209 +1,206 @@
-# Spine-Sim: 1D Axial Spine Impact Simulation
+# Spine-Sim (Simplified): 1D Axial Spine Impact Simulation (Onset-Rate Focus)
 
-A simulation tool for predicting internal spinal forces during paragliding harness drop tests.
+This repo simulates a **1D axial spine compression event** driven by a measured base acceleration time history (accelerometer placed **under the buttocks on the skin surface**). The primary output is the **T12–L1 junction force** time history.
 
-## Overview
+This version has been **deliberately simplified**:
+- No ZWT/Maxwell branches.
+- No calibration pipelines.
+- One CLI command: `simulate-drop`.
+- All parameters live in `config.json`.
 
-This project simulates the axial (vertical) shock response of a human pelvis and thoracolumbar spine during impact. The primary output is the **T12-L1 junction force** time history, which correlates with thoracolumbar injury risk.
+---
 
-### Pipeline
+## What this model is (for sharing with an LLM / preserving decisions)
 
-The simulation uses a two-stage calibration approach:
+### Goal
+Predict how **impact onset-rate** (rise time / jerk) changes the internal spine loading, especially the **early peak T12–L1 force**.
 
-1. **Buttocks Model (Toen 2012)**: Calibrate a viscoelastic buttocks tissue model using backward fall experimental data
-2. **Spine Model (Yoganandan 2021)**: Calibrate the full spine model against FE-derived thoracolumbar disc forces
-3. **Drop Simulation**: Apply calibrated model to paragliding harness drop test acceleration data
+We explicitly do *not* try to match any Yoganandan reference targets in this simplified version.
+
+### Coordinate / sign conventions
+- Axis is vertical only (1D).
+- **Compression forces are positive**.
+- Base acceleration input is in **g**.
+- Gravity is included consistently:
+  - In freefall, the accelerometer reads about **-1 g**.
+  - The base inertial term uses `G0 + base_accel`.
+
+### System topology
+A serial chain of masses connected by 1D elements:
 
 ```
-Toen Paper Data → calibrate-buttocks → Buttocks Model
-                                             ↓
-Yoganandan FE Data → calibrate-drop → Full Spine Model
-                                             ↓
-Drop Test CSV → simulate-drop → T12-L1 Force Output
+[Base/Seat Plate] --(buttocks contact)--> pelvis -- L5 -- ... -- T1 -- C7 -- ... -- C1 -- HEAD
 ```
 
-## Installation
+- Nodes are lumped masses from an OpenSim body-mass JSON (`opensim/fullbody.json`).
+- Cervical nodes C1..C7 are explicit in this simplified version. Because OpenSim does not provide separate cervical vertebra masses in this file, we allocate a small configurable mass to each cervical vertebra and subtract it from the head/neck lump mass.
 
-Requires Python 3.11+ with uv:
+---
+
+## Input signal interpretation (important)
+- The input CSV acceleration is assumed to be measured at the **bottom of the buttocks element** (skin surface under the buttocks).
+- This acceleration is applied as a **base excitation** to the entire chain via inertial loading.
+- The buttocks element is a **contact element** against the base. When there is no contact, it produces **zero force**, allowing “flight” / separation.
+
+---
+
+## Element models
+
+### 1) Buttocks element (contact + bilinear bottom-out)
+**Purpose:** represent soft tissue compliance up to a “bottom-out” transition where load transmits much more directly through the pelvis.
+
+Model behavior:
+- **Compression-only contact**:
+  - If the pelvis separates from the base (tension), buttocks force is **0**.
+- **Bilinear spring**:
+  - stiffness `k1` up to a bottom-out point,
+  - stiffness `k2` after bottom-out (hard kink, no smoothing).
+- **Bottom-out is configured in force (kN)**:
+  - `bottom_out_force_kN` is the force threshold where the spring switches from `k1` to `k2`.
+  - The implied displacement threshold is computed as:
+    - `bottom_out_compression_mm = bottom_out_force_N / k1 * 1000`.
+- **Damping**:
+  - viscous damping `c` is **contact-only** and **closing-only** (it never “pulls” the pelvis toward the base during separation).
+
+### 2) Intervertebral disc (IVD) elements: Kelvin–Voigt with rate-dependent stiffness
+Each disc element is:
+- spring + dashpot (Kelvin–Voigt),
+- constant damping `c = 1200 Ns/m` (global, all IVDs),
+- tension stiffness is reduced by `tension_k_mult = 0.1` to represent non-disc tensile structures while keeping the chain connected.
+
+#### Strain rate computation
+For each disc element at each timestep:
+- Compute relative velocity across the element: `relv = v_upper - v_lower`.
+- Compression rate is clamped to compression-only: `compression_rate = max(-relv, 0)`.
+- Strain rate:
+  - eps_dot ≈ compression_rate / h0
+  - h0 is a constant `disc_height_mm` (default 11.3 mm) applied to all discs.
+
+#### Kemper strain-rate stiffness law (used as a multiplier)
+Kemper relation:
+- kK(eps_dot) = 57.328 * eps_dot + 2019.1 (N/mm), eps_dot in 1/s
+- converted internally to N/m.
+
+We apply Kemper as a multiplier on the baseline per-level stiffness distribution:
+- s(eps_dot) = kK(eps_dot) / kK(eps_norm)
+- k_disc(t) = k0_disc * s(eps_dot_smoothed)
+
+Default `eps_norm = 0 1/s` so baseline stiffness corresponds to quasi-static.
+
+#### Smoothing (numerical stability)
+Strain rate is low-pass filtered with a first-order filter:
+- time constant `strain_rate_smoothing_tau_ms` (default 2 ms).
+- Disc stiffness is updated once per timestep using the smoothed strain rate and then **frozen for the Newton iterations** in that timestep (“frozen stiffness per timestep”).
+
+#### No clamping (but warnings)
+We do not clamp strain rate. We **warn** if any element exceeds `warn_over_eps_per_s` (default 73 1/s) and report which elements exceeded it and their maxima.
+
+---
+
+## Numerical integration
+- Newmark-beta (beta=0.25, gamma=0.5) with Newton iterations per step.
+- The simulation always runs at an internal fixed timestep `solver.dt_internal_s` (default 0.05 ms = 20 kHz).
+- The input acceleration is resampled and CFC-filtered, then **interpolated** to the internal time grid.
+
+CPU time is intentionally not optimized; stability and smooth k(t) behavior take priority.
+
+---
+
+## Running the simulation
+
+### Install
+Python 3.11+ with `uv` recommended.
 
 ```bash
-# Install dependencies
 uv sync
-
-# Or use the script directly (uv will handle dependencies)
-./simulate.py --help
 ```
 
-## Usage
-
-### 1. Calibrate Buttocks Model
-
-Calibrate the buttocks tissue model from Toen 2012 paper data:
-
-```bash
-./simulate.py calibrate-buttocks
-```
-
-This fits three parameters (stiffness, damping, compression limit) to match experimental ground forces on different floor stiffnesses at 3.5 m/s impact velocity.
-
-Output: `calibration/toen_drop.json`
-
-### 2. Simulate Buttocks Model (Optional)
-
-Verify the buttocks model behavior and generate plots:
-
-```bash
-./simulate.py simulate-buttocks
-```
-
-Output: `output/toen_drop/summary.json` and force/compression plots.
-
-### 3. Calibrate Spine Model
-
-Calibrate the full spine model against Yoganandan FE data:
-
-```bash
-./simulate.py calibrate-drop
-```
-
-This uses the Toen-calibrated buttocks model and fits spine stiffness scales to match T12-L1 peak forces across 5 acceleration pulse durations (50-200 ms).
-
-Output: `calibration/zwt.json` (or `calibration/maxwell.json`)
-
-### 4. Run Drop Simulations
-
-Process paragliding harness drop test data:
-
+### Run
 ```bash
 ./simulate.py simulate-drop
 ```
 
-Input: CSV files in `drops/` with columns `time` (or `time0`) and `accel` (or `acceleration`)
+### Input format
+Place CSV files in `drops/` (configurable), with columns:
+- `time` (or `time0` or `t`) in seconds or milliseconds
+- `accel` (or `acceleration`) in g
 
-Output: `output/drop/<name>/timeseries.csv` with full time histories
+### Outputs
+For each drop file `<name>.csv`:
+- `output/drop/<name>/timeseries.csv`
+- `output/drop/<name>/displacements.png`
+- `output/drop/<name>/forces.png`
+- `output/drop/<name>/mixed.png`
 
-## Scientific Background
+And a summary:
+- `output/drop/summary.json`
 
-### Model Structure
+The CSV includes:
+- node displacements/velocities/accelerations
+- element forces (kN)
+- per-element strain rate (1/s)
+- per-element dynamic stiffness (MN/m)
 
-The simulation uses a 1D serial chain of masses connected by viscoelastic elements:
+---
 
-```
-[Base/Seat] → [Buttocks] → [Pelvis] → [L5] → ... → [T12] → ... → [T1] → [Head]
-```
+## Configuration reference (`config.json`)
 
-- **19 nodes**: Pelvis, L5-L1, T12-T1, Head
-- **19 elements**: Buttocks + 18 intervertebral disc elements
-- **Nonlinear springs**: Polynomial stiffening under compression
-- **Maxwell branches**: Rate-dependent viscoelastic response
-- **Compression limits**: Densification behavior at large compressions
+Key knobs:
+- `solver.dt_internal_s`: internal timestep (e.g., 0.00005 for 20 kHz)
+- `buttock.k1_n_per_m`, `buttock.k2_n_per_m`, `buttock.bottom_out_force_kN`, `buttock.c_ns_per_m`
+- `spine.damping_ns_per_m` (default 1200)
+- `spine.disc_height_mm` (default 11.3)
+- `spine.tension_k_mult` (default 0.1)
+- `spine.kemper.strain_rate_smoothing_tau_ms` (default 2.0)
+- `spine.kemper.warn_over_eps_per_s` (default 73)
 
-### Input Styles
+---
 
-The system automatically detects two input styles based on signal duration:
+## Known limitations
+- 1D axial only: no bending, shear, rotation.
+- Cervical masses are approximated (not taken from OpenSim directly).
+- Damping is constant despite large literature scatter and frequency dependence.
+- No injury criterion validation is included in this simplified version.
 
-**Drop-style (≥300 ms)**: Paragliding harness drops
-- Signal includes freefall (~-1g), impact peak, and post-impact
-- Hit extraction isolates the contact window
-- Initial state: unloaded
-
-**Flat-style (<300 ms)**: Calibration pulses (Yoganandan-style)
-- Subject starts at rest on platform
-- Initial state: gravity-settled equilibrium
-
-### Buttocks Model (Toen 2012)
-
-The buttocks model captures soft tissue compliance during seated impact:
-
-- **Source**: Toen et al. 2012 - backward falls onto buttocks at 3.5 m/s
-- **Parameters**: Linear spring (k), viscous damper (c), compression limit with densification
-- **Calibration targets**: Ground force peaks on floors of varying stiffness (59-400 kN/m)
-- **Key constraint**: Maximum compression at rigid floor defines the densification limit
-
-### Spine Model (Yoganandan 2021)
-
-The spine stiffness distribution comes from Raj 2019 (based on Kitazaki & Griffin):
-
-- **Calibration source**: Yoganandan 2021 FE simulations
-- **Input**: Base acceleration pulses (11-46g, 50-200ms duration)
-- **Target**: T12-L1 disc force peaks (3.3-7.6 kN)
-- **Calibration parameters**: Spine stiffness scale (keeps buttocks fixed from Toen)
-
-### Mass Distribution
-
-Body masses are extracted from the OpenSim Male Thoracolumbar Full Body Model:
-
-- Helmet mass added (+0.7 kg)
-- Arms at 50% recruitment (partial dynamic coupling)
-- Legs excluded (not in axial load path)
-
-## Configuration
-
-Edit `config.json` to customize:
-
-```json
-{
-  "model": {
-    "type": "zwt",           // Model type: "zwt" or "maxwell"
-    "masses_json": "opensim/fullbody.json",
-    "arm_recruitment": 0.5,  // Fraction of arm mass recruited
-    "helmet_mass_kg": 0.7
-  },
-  "drop": {
-    "inputs_dir": "drops",
-    "pattern": "*.csv",
-    "output_dir": "output/drop",
-    "cfc": 75,               // CFC filter frequency
-    "sim_duration_ms": 200.0
-  },
-  "buttock": {
-    "target_set": "avg",     // "avg" or "subj3"
-    "velocities_mps": [3.5, 8.0]
-  }
-}
-```
-
-## Output Files
-
-### Calibration
-
-- `calibration/toen_drop.json` - Buttocks model parameters
-- `calibration/zwt.json` - Spine model calibration scales
-
-### Simulation
-
-- `output/drop/<name>/timeseries.csv` - Full time history:
-  - `time_s`, `base_accel_g`
-  - `y_<node>_mm` - Displacement per node
-  - `v_<node>_mps` - Velocity per node
-  - `F_<element>_kN` - Force per element
-
-- `output/drop/summary.json` - Peak values for all runs
-
-### Buttocks Validation
-
-- `output/toen_drop/summary.json` - Results for all floor/velocity combinations
-- `output/toen_drop/buttocks_force_compression_v*.png` - Response plots
-
-## Coordinate Conventions
-
-- **Axis**: Vertical (axial) only, aligned with spine
-- **Compression**: Positive force values
-- **Acceleration**: Inertial acceleration (idle=0g, freefall=-1g)
-- **Gravity**: Included consistently
-
-## Known Limitations
-
-1. **1D Axial Only**: No bending, shear, or rotation effects
-2. **Measured-Input**: Protector behavior is injected via measured acceleration, not predicted
-3. **Human Variability**: Single calibration; no individual variation
-4. **Posture**: Assumes upright axial loading (ignores ~22° recline in harness)
+---
 
 ## References
+- Kemper et al. (lumbar IVD stiffness vs strain rate): k = 57.328*eps_dot + 2019.1 (N/mm)
+- Izambert et al. 2003 (dynamic stiffness/damping of lumbar IVD, 5–30 Hz)
+- Raj/Kitazaki baseline axial stiffness distribution (used as k0 per level)
+```
 
-- Toen et al., 2012: Buttocks tissue mechanics from backward falls
-- Yoganandan et al., 2021: FE caudo-cephalad loading; thoracolumbar disc forces
-- Kitazaki & Griffin, 1997: Biodynamic spine model parameters
-- Raj & Krishnapillai, 2019: Baseline stiffness distribution
-- Bruno/Allaire/Anderson: OpenSim thoracolumbar model for mass distribution
+---
 
+## One more thing you should delete/update
+### `spine_sim/simulation.py`
+It currently re-exports calibration/buttocks modules. You can delete it, or reduce it to nothing. Since `simulate.py` now imports directly from `drop_commands`, it won’t be used.
+
+If you want, here is a minimal safe version:
+
+```python
+"""Compatibility module (no longer used in simplified repo)."""
+```
+
+---
+
+## Sanity checks you should run
+1. `./simulate.py --help` should show only `simulate-drop`.
+2. Run on one CSV and confirm:
+   - `T12-L1` force output exists.
+   - Buttocks force goes to 0 when pelvis separates (free flight).
+   - Summary prints implied bottom-out compression (mm) computed from `bottom_out_force_kN`.
+   - Warning prints if any disc strain rate exceeds 73 1/s.
+
+---
+
+## Anything else needed?
+Two quick follow-ups that affect realism but weren’t explicitly specified:
+
+1. Do you want **buttocks damping to act during opening while still compressed** (i.e., allow damping for both signs as long as contact exists), or keep it “closing-only” as implemented?
+   - Current implementation is the usual contact-safe choice (prevents tensile damping forces).
+
+2. Should the **Kemper stiffness multiplier** apply equally in tension, or only in compression?
+   - Current implementation applies it to the disc’s base k(t), and tension uses `tension_k_mult * k(t)`.
+
+If you want different behavior for either, say so and I’ll adjust.

@@ -1,152 +1,49 @@
 {
-  "model":
-  {
-    "type": "zwt",
+  "model": {
+    "masses_json": "opensim/fullbody.json",
     "arm_recruitment": 0.5,
-    "_helmet_mass_kg": 0.7,
-    "helmet_mass_kg": 0
+    "helmet_mass_kg": 0.0,
+    "cervical_vertebra_mass_kg": 0.15
   },
-  "drop":
-  {
+  "solver": {
+    "dt_internal_s": 0.00005,
+    "max_newton_iter": 25,
+    "newton_tol": 1e-9
+  },
+  "drop": {
+    "inputs_dir": "drops",
+    "pattern": "*.csv",
+    "output_dir": "output/drop",
     "cfc": 75,
     "style_duration_threshold_ms": 300.0,
     "sim_duration_ms": 200.0,
     "gravity_settle_ms": 150.0,
-    "calibration_mode": "peaks",
-    "calibration_bounds":
-    {
-      "s_k_spine":
-      [
-        0.75,
-        1.5
-      ],
-      "s_c_spine":
-      [
-        0.75,
-        1.5
-      ]
+    "drop_baseline_correction": false,
+    "peak_threshold_g": 5.0,
+    "freefall_threshold_g": -0.85
+  },
+  "buttock": {
+    "gap_mm": 0.0,
+    "k1_n_per_m": 180500.0,
+    "c_ns_per_m": 3130.0,
+    "bottom_out_force_kN": 7.0,
+    "k2_n_per_m": 5000000.0
+  },
+  "spine": {
+    "stiffness_scale": 1.0,
+    "disc_height_mm": 11.3,
+    "tension_k_mult": 0.1,
+    "damping_ns_per_m": 1200.0,
+    "kemper": {
+      "normalize_to_eps_per_s": 0.0,
+      "strain_rate_smoothing_tau_ms": 2.0,
+      "warn_over_eps_per_s": 73.0
     }
   },
-  "buttock":
-  {
-    "velocities_mps":
-    [
-      1,
-      3.5,
-      5,
-      6,
-      7,
-      8,
-      10,
-      12
-    ],
-    "densification":
-    {
-      "stop_k_n_per_m": 5000000.0,
-      "stop_smoothing_mm": 1.0
-    },
-    "calibration":
-    {
-      "init":
-      {
-        "k_n_per_m": 180500.0,
-        "c_ns_per_m": 3130.0,
-        "limit_mm": 39
-      },
-      "bounds":
-      {
-        "k_n_per_m":
-        [
-          138000,
-          138000
-        ],
-        "c_ns_per_m":
-        [
-          2893,2893
-        ],
-        "limit_mm":
-        [
-          37,37
-        ]
-      }
-    }
-  },
-  "maxwell":
-  {},
-  "zwt":
-  {
-    "disc_ref_compression_mm": 2.0,
-    "disc_k_mult_at_ref": 8.0,
-    "calibration":
-    {
-      "init":
-      {
-        "c_base_ns_per_m": 1200.0,
-        "disc_ref_compression_mm": 2.0,
-        "disc_k_mult_at_ref": 8.0,
-        "disc_poly_k2_n_per_m2": 0.0,
-        "disc_poly_k3_n_per_m3": 0.0,
-        "maxwell_k_ratios":
-        [
-          1.0,
-          0.5
-        ],
-        "maxwell_tau_ms":
-        [
-          10.0,
-          120.0
-        ]
-      },
-      "bounds":
-      {
-        "_c_base_ns_per_m":
-        [
-          800.0,
-          1600.0
-        ],
-        "_disc_ref_compression_mm":
-        [
-          1.0,
-          5.0
-        ],
-        "_disc_k_mult_at_ref":
-        [
-          1.0,
-          20.0
-        ],
-        "_disc_poly_k2_n_per_m2":
-        [
-          0.0,
-          2
-        ],
-        "_disc_poly_k3_n_per_m3":
-        [
-          0.0,
-          2
-        ],
-        "_maxwell_k_ratios":
-        [
-          [
-            0.5,
-            2
-          ],
-          [
-            0.25,
-            1
-          ]
-        ],
-        "_maxwell_tau_ms":
-        [
-          [
-            5.0,
-            20.0
-          ],
-          [
-            60.0,
-            240.0
-          ]
-        ]
-      }
-    }
+  "plotting": {
+    "buttocks_height_mm": 100.0,
+    "show_element_thickness": false,
+    "stack_elements": true,
+    "buttocks_clamp_to_height": true
   }
 }

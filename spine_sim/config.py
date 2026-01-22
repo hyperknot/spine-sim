@@ -1,4 +1,4 @@
-"""Configuration and path utilities for spine simulation."""
+"""Configuration and path utilities for spine simulation (simplified)."""
 
 from __future__ import annotations
 
@@ -8,8 +8,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 DEFAULT_MASSES_JSON = REPO_ROOT / 'opensim' / 'fullbody.json'
-CALIBRATION_ROOT = REPO_ROOT / 'calibration'
-CALIBRATION_YOGANANDAN_DIR = CALIBRATION_ROOT / 'yoganandan'
 
 # Drop input/output defaults
 DEFAULT_DROP_INPUTS_DIR = REPO_ROOT / 'drops'
