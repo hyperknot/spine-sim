@@ -195,7 +195,7 @@ def debug_find_disks(model_path: Path, geom_dir: Path | None) -> None:
                 child = j.getChildFrame().getName()
                 print(f'  Parent frame: {parent}')
                 print(f'  Child frame: {child}')
-            except:
+            except Exception:
                 pass
 
             # Cast to CustomJoint and get coordinates

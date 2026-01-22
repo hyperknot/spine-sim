@@ -48,8 +48,8 @@ def main():
 
     # Get all unique drop rates and jerk limits
     all_keys = set(unlimited_data.keys()) | set(fixed_data.keys())
-    drop_rates = sorted(set(k[0] for k in all_keys))
-    jerk_limits = sorted(set(k[1] for k in all_keys))
+    drop_rates = sorted({k[0] for k in all_keys})
+    jerk_limits = sorted({k[1] for k in all_keys})
 
     # Create matrices for the heatmaps
     def create_matrix(data):
