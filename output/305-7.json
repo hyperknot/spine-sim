@@ -1,0 +1,1122 @@
+[
+  {
+    "file": "1.0-10-1000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999975,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 10.048594705690384,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 2.251816649505847,
+    "peak_T12L1_kN": 1.6477242726238628,
+    "time_to_peak_ms": 52.15,
+    "max_spine_shortening_mm": 15.520283918059732,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 5.701704290594503,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 11.291201018441473,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "1.0-14-2000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999996,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 14.152828765408383,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 2.3634256515331034,
+    "peak_T12L1_kN": 1.6720540748062949,
+    "time_to_peak_ms": 49.9,
+    "max_spine_shortening_mm": 15.860896293806963,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 5.6849288006754515,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 12.08067228246284,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "1.0-20-4000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 10000.000000000016,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 19.926400233808277,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 2.5016659637885605,
+    "peak_T12L1_kN": 1.6868719003662032,
+    "time_to_peak_ms": 48.1,
+    "max_spine_shortening_mm": 16.0442677871329,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 5.654940446366505,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 13.896800493770705,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "1.0-29-8000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 10000.000000000016,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 28.084242301259597,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 2.708993938964889,
+    "peak_T12L1_kN": 1.6948842923989857,
+    "time_to_peak_ms": 46.75,
+    "max_spine_shortening_mm": 16.144390161724488,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 5.627401119306128,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 15.026542522977612,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "1.0-40-16000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 10000.00000000006,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 39.48279064196469,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 2.9883136044786758,
+    "peak_T12L1_kN": 1.6988957819902923,
+    "time_to_peak_ms": 45.75,
+    "max_spine_shortening_mm": 16.20099252837633,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 5.603087466710009,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 17.83345883165412,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "2.0-14-1000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 14.22307742188064,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 3.893218246015784,
+    "peak_T12L1_kN": 2.9944164416990726,
+    "time_to_peak_ms": 53.45,
+    "max_spine_shortening_mm": 26.3709975759895,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 9.920518503154666,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 19.907468221373403,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "2.0-20-2000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999975,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 20.097189411380768,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 4.167714064578431,
+    "peak_T12L1_kN": 3.074476655294744,
+    "time_to_peak_ms": 50.4,
+    "max_spine_shortening_mm": 27.36659664297676,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 10.05319616885844,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 20.859590771905882,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "2.0-29-4000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999996,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 28.305657530816767,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 4.42323934315748,
+    "peak_T12L1_kN": 3.1296439357898165,
+    "time_to_peak_ms": 48.0,
+    "max_spine_shortening_mm": 27.867217721300058,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 10.083277853059732,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 23.054389340023654,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "2.0-40-8000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 10000.000000000016,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 39.852800467616554,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 4.697267795305287,
+    "peak_T12L1_kN": 3.162924173593134,
+    "time_to_peak_ms": 46.05,
+    "max_spine_shortening_mm": 28.11328846895173,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 10.075480057220704,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 27.016672350529134,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "2.0-57-16000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 10000.000000000016,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 56.16848460251919,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 5.079538582614558,
+    "peak_T12L1_kN": 3.1796184670861742,
+    "time_to_peak_ms": 44.6,
+    "max_spine_shortening_mm": 28.234125516726458,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 10.05808317418844,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 29.597738346361755,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "3.0-17-1000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 17.435881613363744,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 5.477402662615902,
+    "peak_T12L1_kN": 4.243805151591025,
+    "time_to_peak_ms": 55.900000000000006,
+    "max_spine_shortening_mm": 35.60018217286682,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 13.988021702865964,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 27.937725078210942,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "3.0-25-2000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 24.60933273957394,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 5.888509506365504,
+    "peak_T12L1_kN": 4.467630885715568,
+    "time_to_peak_ms": 50.75,
+    "max_spine_shortening_mm": 37.60667611313506,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 14.29951471665433,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 29.618213824825,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "3.0-35-4000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999975,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 34.7160659090346,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 6.333362200772171,
+    "peak_T12L1_kN": 4.580110236628708,
+    "time_to_peak_ms": 47.95,
+    "max_spine_shortening_mm": 38.553243901683,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 14.454529360391696,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 30.547581902510128,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "3.0-49-8000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999996,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 49.03366056598192,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 6.737091461222122,
+    "peak_T12L1_kN": 4.657324251348701,
+    "time_to_peak_ms": 45.650000000000006,
+    "max_spine_shortening_mm": 38.99791028142896,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 14.498720391637477,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 36.51255983853308,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "3.0-70-16000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 10000.000000000016,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 69.01970136845166,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 7.188978444144385,
+    "peak_T12L1_kN": 4.698401344162044,
+    "time_to_peak_ms": 43.9,
+    "max_spine_shortening_mm": 39.19716265766123,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 14.498459969303688,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 42.299395394741246,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "4.0-20-1000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 20.14344063967223,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 7.09167166168511,
+    "peak_T12L1_kN": 5.3217868896234,
+    "time_to_peak_ms": 58.0,
+    "max_spine_shortening_mm": 43.543975845716744,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 17.90652669548299,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 35.29401183038406,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "4.0-29-2000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 28.44615484376128,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 7.5644189714735806,
+    "peak_T12L1_kN": 5.853355332722932,
+    "time_to_peak_ms": 51.4,
+    "max_spine_shortening_mm": 46.811010836495555,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 18.47979994897327,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 37.90767453265511,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "4.0-40-4000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999975,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 40.194378822761536,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 8.190449027595541,
+    "peak_T12L1_kN": 6.044459170604273,
+    "time_to_peak_ms": 47.95,
+    "max_spine_shortening_mm": 48.371476936028714,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 18.770456966626114,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 39.33481694025858,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "4.0-57-8000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999996,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 56.61131506163353,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 8.79167145745842,
+    "peak_T12L1_kN": 6.178249880536631,
+    "time_to_peak_ms": 45.45,
+    "max_spine_shortening_mm": 49.0526613945149,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 18.900541281721946,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 43.918860294379186,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "4.0-81-16000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 10000.000000000016,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 79.70560093523311,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 9.347480770829176,
+    "peak_T12L1_kN": 6.258113040383386,
+    "time_to_peak_ms": 43.45,
+    "max_spine_shortening_mm": 49.34465614449357,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 18.93098116022882,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 53.49184663118797,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "5.0-23-1000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 22.51987902977097,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 8.639747165291139,
+    "peak_T12L1_kN": 6.261937189613776,
+    "time_to_peak_ms": 59.800000000000004,
+    "max_spine_shortening_mm": 50.44482090283516,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 21.655579571121894,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 41.924377117791785,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "5.0-32-2000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 31.8044615888829,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 9.233728171329894,
+    "peak_T12L1_kN": 7.156654930022832,
+    "time_to_peak_ms": 52.6,
+    "max_spine_shortening_mm": 55.14666003153002,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 22.599162259338375,
+      "bottomed_out": false,
+      "compression_overshoot_mm": 0.0
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 45.76382100461856,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "5.0-45-4000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 44.947255602956226,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 10.005135701326106,
+    "peak_T12L1_kN": 7.527820038610483,
+    "time_to_peak_ms": 48.0,
+    "max_spine_shortening_mm": 57.486208514481774,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 23.02941733027441,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 0.0785976581432628
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 47.91289704906677,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "5.0-64-8000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999975,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 63.42391826459945,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 10.82335604924558,
+    "peak_T12L1_kN": 7.726492222270282,
+    "time_to_peak_ms": 45.35,
+    "max_spine_shortening_mm": 58.59594360182462,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 23.136086435493787,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 0.18526676336264103
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 49.738389037827766,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "5.0-90-16000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 10000.0,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 89.26729501836196,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 11.543047204231117,
+    "peak_T12L1_kN": 7.859498459340413,
+    "time_to_peak_ms": 43.2,
+    "max_spine_shortening_mm": 59.032827614925964,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 23.178681919627085,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 0.22786224749593842
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 63.11400225238571,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "6.0-25-1000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 24.67164767212198,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 11.655370735634126,
+    "peak_T12L1_kN": 7.216518147230413,
+    "time_to_peak_ms": 67.4,
+    "max_spine_shortening_mm": 57.92584466720915,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 23.778548056781066,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 0.8277283846499195
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 53.386039828974184,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "6.0-35-2000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 34.87176322672749,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 13.42652414674949,
+    "peak_T12L1_kN": 8.906184742670325,
+    "time_to_peak_ms": 57.60000000000001,
+    "max_spine_shortening_mm": 65.28236368748773,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 24.10696708991309,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 1.1561474177819449
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 61.008886399287746,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "6.0-49-4000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 49.21866547914788,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 13.227906621859598,
+    "peak_T12L1_kN": 9.701511973271087,
+    "time_to_peak_ms": 51.15,
+    "max_spine_shortening_mm": 69.12728651358606,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 24.10090455823797,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 1.150084886106825
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 64.5978540035029,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "6.0-70-8000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999975,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 69.4321318180692,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 12.874062146818677,
+    "peak_T12L1_kN": 10.189440644523373,
+    "time_to_peak_ms": 46.75,
+    "max_spine_shortening_mm": 70.88465416261515,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 24.034668099677845,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 1.0838484275466982
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 66.30376699069011,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "6.0-99-16000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999996,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 98.06732113196384,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 13.754822234605832,
+    "peak_T12L1_kN": 10.487100173469898,
+    "time_to_peak_ms": 43.85,
+    "max_spine_shortening_mm": 71.58720598175776,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 24.001545693775117,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 1.050726021643971
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 71.30343164521179,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "7.0-100-16000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999996,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 100.09661624444301,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 17.918011770593324,
+    "peak_T12L1_kN": 13.35017792790008,
+    "time_to_peak_ms": 42.2,
+    "max_spine_shortening_mm": 82.58584427007872,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 24.93035677338199,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 1.9795371012508447
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 78.01739148958951,
+      "fraction_samples_over_warn": 0.0004998750312421895
+    }
+  },
+  {
+    "file": "7.0-27-1000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 26.660972778117305,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 14.827655351770641,
+    "peak_T12L1_kN": 9.218322540106037,
+    "time_to_peak_ms": 65.75,
+    "max_spine_shortening_mm": 65.93485537436322,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 24.39938187384297,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 1.4485622017118231
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 60.75475168800084,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "7.0-38-2000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 37.675044275044385,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 17.368567872088033,
+    "peak_T12L1_kN": 11.489717364433474,
+    "time_to_peak_ms": 56.300000000000004,
+    "max_spine_shortening_mm": 75.09388100994269,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 24.884653891030926,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 1.9338342188997792
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 71.00473018945574,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "7.0-53-4000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 53.16613726234608,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 18.106656130824987,
+    "peak_T12L1_kN": 12.826586776432322,
+    "time_to_peak_ms": 49.300000000000004,
+    "max_spine_shortening_mm": 79.79779463370758,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 24.9789643796966,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 2.0281447075654526
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 75.36841021029701,
+      "fraction_samples_over_warn": 0.00013154606085320774
+    }
+  },
+  {
+    "file": "7.0-76-8000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999975,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 75.03479894405517,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 17.98245855239693,
+    "peak_T12L1_kN": 13.235476081265999,
+    "time_to_peak_ms": 44.900000000000006,
+    "max_spine_shortening_mm": 81.84294614744138,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 24.9423369543537,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 1.9915172822225529
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 77.26934616868712,
+      "fraction_samples_over_warn": 0.00019731909127981162
+    }
+  },
+  {
+    "file": "8.0-100-16000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999975,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 100.09583462679015,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 23.306934854920137,
+    "peak_T12L1_kN": 15.689064608626925,
+    "time_to_peak_ms": 41.35,
+    "max_spine_shortening_mm": 92.09898590862849,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 25.9108219179434,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 2.9600022458122552
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 86.3830590622712,
+      "fraction_samples_over_warn": 0.0034465067943540433
+    }
+  },
+  {
+    "file": "8.0-29-1000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 28.49240607205421,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 16.96430356911348,
+    "peak_T12L1_kN": 10.586764896378893,
+    "time_to_peak_ms": 65.0,
+    "max_spine_shortening_mm": 72.7476665791141,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 24.82304009566134,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 1.8722204235301945
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 65.98665417630195,
+      "fraction_samples_over_warn": 0.0
+    }
+  },
+  {
+    "file": "8.0-40-2000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 40.28688127934446,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 20.166419947793933,
+    "peak_T12L1_kN": 13.330120632358183,
+    "time_to_peak_ms": 55.7,
+    "max_spine_shortening_mm": 83.57156255016538,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 25.445145532055317,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 2.494325859924171
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 79.83710684996679,
+      "fraction_samples_over_warn": 0.00024993751562109475
+    }
+  },
+  {
+    "file": "8.0-57-4000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999714,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 56.89230968752256,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 22.18552192873471,
+    "peak_T12L1_kN": 15.333875038887689,
+    "time_to_peak_ms": 48.85,
+    "max_spine_shortening_mm": 89.13595371984741,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 25.78444921202931,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 2.833629539898162
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 85.67162420787463,
+      "fraction_samples_over_warn": 0.000289401333877057
+    }
+  },
+  {
+    "file": "8.0-81-8000.csv",
+    "style": "flat",
+    "input_sample_rate_hz": 9999.999999999975,
+    "internal_solver_rate_hz": 20000.0,
+    "base_accel_peak_g": 80.38875764552307,
+    "base_accel_min_g": -1.0,
+    "peak_buttocks_kN": 23.3864233515519,
+    "peak_T12L1_kN": 15.903872505418397,
+    "time_to_peak_ms": 44.00000000000001,
+    "max_spine_shortening_mm": 91.34104734394337,
+    "bottom_out_compression_mm": 22.951,
+    "buttocks": {
+      "k1_n_per_m": 305000.0,
+      "k2_n_per_m": 5000000.0,
+      "c_ns_per_m": 5250.0,
+      "bottom_out_force_kN": 7.0,
+      "implied_bottom_out_compression_mm": 22.950819672131146,
+      "max_compression_mm": 25.923339239461512,
+      "bottomed_out": true,
+      "compression_overshoot_mm": 2.972519567330366
+    },
+    "strain_rate": {
+      "warn_over_eps_per_s": 73.0,
+      "max_eps_any_per_s": 86.4457772309103,
+      "fraction_samples_over_warn": 0.00253883897446691
+    }
+  }
+]
