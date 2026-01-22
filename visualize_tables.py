@@ -3,6 +3,8 @@
 """
 Visualize spine simulation results as colored tables.
 Shows T12L1 kN values (with peak G in brackets) across drop rates and jerk limits.
+
+Processes all JSON files in the output/ folder and generates PNG images.
 """
 
 import json
@@ -19,6 +21,7 @@ def load_data(json_path):
         data = json.load(f)
 
     result = {}
+    bottom_out_force_kN = None
     bottom_out_compression = None
 
     for entry in data:
@@ -32,45 +35,45 @@ def load_data(json_path):
             'peak_g': entry['base_accel_peak_g'],
         }
 
-        # Capture bottom_out_compression_mm (same across all entries in a file)
-        if 'bottom_out_compression_mm' in entry:
+        # Capture bottom_out values from first entry
+        if bottom_out_force_kN is None and 'buttocks' in entry:
+            bottom_out_force_kN = entry['buttocks'].get('bottom_out_force_kN')
+        if bottom_out_compression is None and 'bottom_out_compression_mm' in entry:
             bottom_out_compression = entry['bottom_out_compression_mm']
 
-    return result, bottom_out_compression
+    return result, bottom_out_force_kN, bottom_out_compression
 
 
-def main():
-    output_dir = Path(__file__).parent / 'output'
+def process_json(json_path):
+    """Process a single JSON file and generate a PNG."""
+    # Output PNG with same base name
+    output_path = json_path.with_suffix('.png')
 
-    # Load both datasets
-    unlimited_data, _ = load_data(output_dir / 'unlimited-180.json')
-    fixed_data, bottom_out_mm = load_data(output_dir / 'fixed-180-7.json')
+    # Load data
+    data, bottom_out_force_kN, bottom_out_compression_mm = load_data(json_path)
 
     # Get all unique drop rates and jerk limits
-    all_keys = set(unlimited_data.keys()) | set(fixed_data.keys())
-    drop_rates = sorted({k[0] for k in all_keys})
-    jerk_limits = sorted({k[1] for k in all_keys})
+    drop_rates = sorted({k[0] for k in data.keys()})
+    jerk_limits = sorted({k[1] for k in data.keys()})
 
-    # Create matrices for the heatmaps
-    def create_matrix(data):
-        matrix = np.full((len(drop_rates), len(jerk_limits)), np.nan)
-        for i, dr in enumerate(drop_rates):
-            for j, jl in enumerate(jerk_limits):
-                if (dr, jl) in data:
-                    matrix[i, j] = data[(dr, jl)]['kN']
-        return matrix
+    # Create matrix for the heatmap
+    matrix = np.full((len(drop_rates), len(jerk_limits)), np.nan)
+    for i, dr in enumerate(drop_rates):
+        for j, jl in enumerate(jerk_limits):
+            if (dr, jl) in data:
+                matrix[i, j] = data[(dr, jl)]['kN']
 
-    unlimited_matrix = create_matrix(unlimited_data)
-    fixed_matrix = create_matrix(fixed_data)
+    # Fixed color scale: min from data, max fixed at 17
+    vmin = np.nanmin(matrix)
+    vmax = 17.0
 
-    # Find global min/max for consistent colormap
-    all_values = []
-    for m in [unlimited_matrix, fixed_matrix]:
-        all_values.extend(m[~np.isnan(m)].flatten())
-    vmin, vmax = min(all_values), max(all_values)
+    # Create figure with fixed size and layout
+    fig = plt.figure(figsize=(8, 9))
 
-    # Create figure with two subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 8))
+    # Fixed layout: title area at top, table below
+    # Using fixed axes positions to ensure consistent table placement
+    title_height = 0.12  # Fixed height for title area
+    ax = fig.add_axes([0.12, 0.08, 0.75, 0.75])  # [left, bottom, width, height]
 
     # Custom colormap with gradients:
     # < 8 kN: blue -> cyan -> green (safe)
@@ -141,71 +144,83 @@ def main():
 
     cmap = mcolors.LinearSegmentedColormap.from_list('danger', list(zip(positions, colors)))
 
-    def plot_table(ax, matrix, data, title):
-        # Create heatmap
-        im = ax.imshow(matrix, cmap=cmap, vmin=vmin, vmax=vmax, aspect='auto')
+    # Create heatmap
+    im = ax.imshow(matrix, cmap=cmap, vmin=vmin, vmax=vmax, aspect='auto')
 
-        # Set ticks
-        ax.set_xticks(range(len(jerk_limits)))
-        ax.set_xticklabels([str(jl) for jl in jerk_limits])
-        ax.set_yticks(range(len(drop_rates)))
-        ax.set_yticklabels([f'{dr:.0f}' for dr in drop_rates])
+    # Set ticks
+    ax.set_xticks(range(len(jerk_limits)))
+    ax.set_xticklabels([str(jl) for jl in jerk_limits])
+    ax.set_yticks(range(len(drop_rates)))
+    ax.set_yticklabels([f'{dr:.0f}' for dr in drop_rates])
 
-        # Labels
-        ax.set_xlabel('Jerk Limit (m/s³)', fontsize=12)
-        ax.set_ylabel('Drop Rate (m/s)', fontsize=12)
-        ax.set_title(title, fontsize=14, fontweight='bold')
+    # Labels
+    ax.set_xlabel('Jerk Limit (m/s³)', fontsize=12)
+    ax.set_ylabel('Drop Rate (m/s)', fontsize=12)
 
-        # Add text annotations
-        for i, dr in enumerate(drop_rates):
-            for j, jl in enumerate(jerk_limits):
-                if (dr, jl) in data:
-                    kn = data[(dr, jl)]['kN']
-                    peak_g = data[(dr, jl)]['peak_g']
-
-                    # Determine text color based on kN value
-                    if kn >= threshold_danger:
-                        text_color = 'white'
-                    elif kn >= threshold_caution:
-                        text_color = 'black'
-                    else:
-                        # Blue-green zone: white for darker blues, black for lighter greens
-                        norm_in_zone = (
-                            (kn - vmin) / (threshold_caution - vmin)
-                            if threshold_caution > vmin
-                            else 0
-                        )
-                        text_color = 'white' if norm_in_zone < 0.4 else 'black'
-
-                    ax.text(
-                        j,
-                        i,
-                        f'{kn:.2f}kN\n({peak_g:.0f}G)',
-                        ha='center',
-                        va='center',
-                        fontsize=9,
-                        color=text_color,
-                        fontweight='bold',
-                    )
-                else:
-                    ax.text(j, i, 'N/A', ha='center', va='center', fontsize=9, color='gray')
-
-    # Plot both tables
-    plot_table(ax1, unlimited_matrix, unlimited_data, 'Buttock tissue\nno bottoming out limit')
-
-    # Build title with bottom_out_compression from JSON
-    if bottom_out_mm is not None:
-        fixed_title = f'Buttock tissue\nbottoms out at 7kN (~{bottom_out_mm:.0f}mm compression)'
+    # Build title based on bottom_out_force_kN
+    if bottom_out_force_kN is not None and bottom_out_force_kN >= 9999:
+        title = 'Buttock tissue\nno bottoming out limit'
+    elif bottom_out_force_kN is not None:
+        if bottom_out_compression_mm is not None:
+            title = f'Buttock tissue\nbottoms out at {bottom_out_force_kN:.0f}kN (~{bottom_out_compression_mm:.0f}mm compression)'
+        else:
+            title = f'Buttock tissue\nbottoms out at {bottom_out_force_kN:.0f}kN'
     else:
-        fixed_title = 'Buttock tissue\nbottoms out at 7kN'
+        title = 'Buttock tissue'
 
-    plot_table(ax2, fixed_matrix, fixed_data, fixed_title)
+    # Title with fixed position
+    fig.text(0.5, 0.92, title, ha='center', va='center', fontsize=14, fontweight='bold')
 
-    # Save only (no display)
-    output_path = output_dir / 'comparison_table.png'
+    # Add text annotations
+    for i, dr in enumerate(drop_rates):
+        for j, jl in enumerate(jerk_limits):
+            if (dr, jl) in data:
+                kn = data[(dr, jl)]['kN']
+                peak_g = data[(dr, jl)]['peak_g']
+
+                # Determine text color based on kN value
+                if kn >= threshold_danger:
+                    text_color = 'white'
+                elif kn >= threshold_caution:
+                    text_color = 'black'
+                else:
+                    # Blue-green zone: white for darker blues, black for lighter greens
+                    norm_in_zone = (
+                        (kn - vmin) / (threshold_caution - vmin)
+                        if threshold_caution > vmin
+                        else 0
+                    )
+                    text_color = 'white' if norm_in_zone < 0.4 else 'black'
+
+                ax.text(
+                    j,
+                    i,
+                    f'{kn:.2f}kN\n({peak_g:.0f}G)',
+                    ha='center',
+                    va='center',
+                    fontsize=9,
+                    color=text_color,
+                    fontweight='bold',
+                )
+            else:
+                ax.text(j, i, 'N/A', ha='center', va='center', fontsize=9, color='gray')
+
+    # Save
     plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
     print(f'Saved to: {output_path}')
     plt.close()
+
+
+def main():
+    output_dir = Path(__file__).parent / 'output'
+    json_files = sorted(output_dir.glob('*.json'))
+
+    if not json_files:
+        print(f'No JSON files found in {output_dir}')
+        return
+
+    for json_path in json_files:
+        process_json(json_path)
 
 
 if __name__ == '__main__':
