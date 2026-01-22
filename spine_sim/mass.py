@@ -16,11 +16,15 @@ def build_mass_map(
       - OpenSim file provides 'head_neck' as a combined lump already.
       - We do NOT create separate cervical vertebra nodes or masses.
 
-    Arms are optionally "recruited" into the head/neck effective mass (legacy behavior).
+    Arms:
+      - arm_recruitment is interpreted as the fraction of total arm mass whose
+        weight/inertia loads the spine (vs being supported externally by thighs/armrests/table).
+      - Recruited arm mass is added to T1 (shoulder/upper thorax region), NOT to HEAD.
     """
     b = masses['bodies']
 
-    arm_mass = (
+    # Total arm mass (both sides)
+    arm_mass_total = (
         b['humerus_R']
         + b['humerus_L']
         + b['ulna_R']
@@ -29,9 +33,12 @@ def build_mass_map(
         + b['radius_L']
         + b['hand_R']
         + b['hand_L']
-    ) * float(arm_recruitment)
+    )
 
-    head_total = float(b['head_neck']) + float(helmet_mass) + float(arm_mass)
+    arm_mass_to_spine = float(arm_mass_total) * float(arm_recruitment)
+
+    # HEAD: head/neck/cervical lump + optional helmet only (no arms here)
+    head_total = float(b['head_neck']) + float(helmet_mass)
 
     mass_map = {
         'pelvis': float(b['pelvis']),
@@ -51,7 +58,8 @@ def build_mass_map(
         'T4': float(b['thoracic4']),
         'T3': float(b['thoracic3']),
         'T2': float(b['thoracic2']),
-        'T1': float(b['thoracic1']),
+        # Add recruited arms at T1 (approx shoulder attachment level)
+        'T1': float(b['thoracic1']) + float(arm_mass_to_spine),
         'HEAD': head_total,
     }
 
@@ -61,6 +69,7 @@ def build_mass_map(
         echo(f'  {name:6s}: {mass_kg:7.3f} kg')
     total_mass_kg = sum(mass_map.values())
     echo(f'  {"TOTAL":6s}: {total_mass_kg:7.3f} kg')
+    echo(f'  arms_total={arm_mass_total:.3f} kg, arms_to_spine={arm_mass_to_spine:.3f} kg')
     echo(f'  (arm_recruitment={arm_recruitment:.1%}, helmet={helmet_mass:.2f} kg)')
 
     return mass_map
