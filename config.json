@@ -20,7 +20,7 @@
   "buttock": {
     "k1_n_per_m": 180500.0,
     "c_ns_per_m": 3130.0,
-    "bottom_out_force_kN": 7.0,
+    "bottom_out_force_kN": 9997.0,
     "k2_n_per_m": 5000000.0
   },
   "spine": {

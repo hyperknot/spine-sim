@@ -1,11 +1,5 @@
-#!/usr/bin/env python3
-# /// script
-# requires-python = ">=3.10"
-# dependencies = [
-#     "matplotlib",
-#     "numpy",
-# ]
-# ///
+#!/usr/bin/env -S uv run
+
 """
 Visualize spine simulation results as colored tables.
 Shows T12L1 kN values (with peak G in brackets) across drop rates and jerk limits.
@@ -42,8 +36,8 @@ def main():
     output_dir = Path(__file__).parent / 'output'
 
     # Load both datasets
-    unlimited_data = load_data(output_dir / 'unlimited.json')
-    fixed_data = load_data(output_dir / 'fixed.json')
+    unlimited_data = load_data(output_dir / 'unlimited-180.json')
+    fixed_data = load_data(output_dir / 'fixed-180-7.json')
 
     # Get all unique drop rates and jerk limits
     all_keys = set(unlimited_data.keys()) | set(fixed_data.keys())
@@ -71,22 +65,61 @@ def main():
     # Create figure with two subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 8))
 
-    # Custom colormap: green below 8, transition to red/orange above 8
-    # Create a diverging colormap centered around 8 kN (danger threshold)
-    danger_threshold = 8.0
-    # Normalize so that 8 kN maps to ~0.5 in the colormap
-    norm_center = (danger_threshold - vmin) / (vmax - vmin)
+    # Custom colormap with gradients:
+    # < 8 kN: blue -> cyan -> green (safe)
+    # 8-10 kN: yellow -> orange (caution)
+    # > 10 kN: red -> dark red -> crazy purple (danger)
+    threshold_caution = 8.0
+    threshold_danger = 10.0
 
-    # Create custom colormap: green -> yellow -> orange -> red
-    colors = [
-        (0.2, 0.7, 0.3),    # green (safe)
-        (0.5, 0.8, 0.3),    # yellow-green
-        (0.95, 0.9, 0.3),   # yellow (threshold)
-        (0.95, 0.6, 0.2),   # orange
-        (0.85, 0.2, 0.2),   # red (danger)
-    ]
-    # Position colors so yellow is at the danger threshold
-    positions = [0.0, norm_center * 0.5, norm_center, norm_center + (1 - norm_center) * 0.5, 1.0]
+    # Normalize threshold positions to [0, 1] range
+    norm_caution = (threshold_caution - vmin) / (vmax - vmin)
+    norm_danger = (threshold_danger - vmin) / (vmax - vmin)
+
+    # Clamp to valid range
+    norm_caution = max(0.0, min(1.0, norm_caution))
+    norm_danger = max(0.0, min(1.0, norm_danger))
+
+    # Build gradient with multiple stops in each zone
+    colors = []
+    positions = []
+
+    # Zone 1: Blue-green gradient (vmin to 8)
+    colors.extend([
+        (0.2, 0.4, 0.8),     # blue
+        (0.2, 0.7, 0.7),     # cyan
+        (0.3, 0.8, 0.4),     # green
+    ])
+    positions.extend([
+        0.0,
+        norm_caution * 0.5,
+        norm_caution,
+    ])
+
+    # Zone 2: Yellow-orange gradient (8 to 10)
+    colors.extend([
+        (0.95, 0.9, 0.3),    # yellow
+        (0.95, 0.6, 0.2),    # orange
+    ])
+    positions.extend([
+        norm_caution + 0.001,
+        norm_danger,
+    ])
+
+    # Zone 3: Red to crazy purple gradient (10 to vmax)
+    colors.extend([
+        (0.9, 0.2, 0.2),     # red
+        (0.7, 0.1, 0.3),     # dark red/crimson
+        (0.6, 0.1, 0.6),     # purple
+        (0.5, 0.0, 0.8),     # crazy purple/violet
+    ])
+    positions.extend([
+        norm_danger + 0.001,
+        norm_danger + (1.0 - norm_danger) * 0.33,
+        norm_danger + (1.0 - norm_danger) * 0.66,
+        1.0,
+    ])
+
     cmap = mcolors.LinearSegmentedColormap.from_list('danger', list(zip(positions, colors)))
 
     def plot_table(ax, matrix, data, title):
@@ -111,9 +144,15 @@ def main():
                     kn = data[(dr, jl)]['kN']
                     peak_g = data[(dr, jl)]['peak_g']
 
-                    # Determine text color based on background brightness
-                    norm_val = (kn - vmin) / (vmax - vmin)
-                    text_color = 'white' if norm_val > 0.6 or norm_val < 0.3 else 'black'
+                    # Determine text color based on kN value
+                    if kn >= threshold_danger:
+                        text_color = 'white'
+                    elif kn >= threshold_caution:
+                        text_color = 'black'
+                    else:
+                        # Blue-green zone: white for darker blues, black for lighter greens
+                        norm_in_zone = (kn - vmin) / (threshold_caution - vmin) if threshold_caution > vmin else 0
+                        text_color = 'white' if norm_in_zone < 0.4 else 'black'
 
                     ax.text(j, i, f'{kn:.2f}kN\n({peak_g:.0f}G)',
                             ha='center', va='center', fontsize=9,
