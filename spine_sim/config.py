@@ -9,11 +9,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.parent
 DEFAULT_MASSES_JSON = REPO_ROOT / 'opensim' / 'fullbody.json'
 
-# Drop input/output defaults
-DEFAULT_DROP_INPUTS_DIR = REPO_ROOT / 'drops'
-DEFAULT_DROP_PATTERN = '*.csv'
-DEFAULT_DROP_OUTPUT_DIR = REPO_ROOT / 'output' / 'drop'
-
 
 def read_config() -> dict:
     return json.loads((REPO_ROOT / 'config.json').read_text(encoding='utf-8'))

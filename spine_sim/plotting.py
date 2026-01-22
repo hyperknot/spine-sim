@@ -35,14 +35,6 @@ def _build_height_map(
         'T3': 'thoracic3',
         'T2': 'thoracic2',
         'T1': 'thoracic1',
-        # OpenSim file does not provide cervical vertebra heights here; fall back to spacing
-        'C7': None,
-        'C6': None,
-        'C5': None,
-        'C4': None,
-        'C3': None,
-        'C2': None,
-        'C1': None,
         'HEAD': 'head_neck',
     }
 
@@ -83,10 +75,12 @@ def _build_node_heights_from_rest(rest_lengths_mm: np.ndarray) -> np.ndarray:
 def _compute_element_geometry_from_rest(
     y_mm: np.ndarray,
     rest_lengths_mm: np.ndarray,
-    *,
-    buttocks_clamp_to_height: bool = True,
-    stack_elements: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Simplified plotting geometry:
+      - always stack elements
+      - always clamp buttocks thickness to [0, rest]
+    """
     n_steps, n_elems = y_mm.shape
 
     ext = np.zeros((n_steps, n_elems), dtype=float)
@@ -96,29 +90,18 @@ def _compute_element_geometry_from_rest(
 
     thickness = rest_lengths_mm[np.newaxis, :] + ext
 
-    if buttocks_clamp_to_height:
-        butt_thickness = rest_lengths_mm[0] + np.minimum(ext[:, 0], 0.0)
-        thickness[:, 0] = np.clip(butt_thickness, 0.0, rest_lengths_mm[0])
+    # Clamp buttocks thickness
+    butt_thickness = rest_lengths_mm[0] + np.minimum(ext[:, 0], 0.0)
+    thickness[:, 0] = np.clip(butt_thickness, 0.0, rest_lengths_mm[0])
 
-    if stack_elements:
-        lower = np.zeros_like(thickness)
-        upper = np.zeros_like(thickness)
-        lower[:, 0] = 0.0
-        upper[:, 0] = thickness[:, 0]
-        for e in range(1, n_elems):
-            lower[:, e] = upper[:, e - 1]
-            upper[:, e] = lower[:, e] + thickness[:, e]
-    else:
-        node_heights_mm = _build_node_heights_from_rest(rest_lengths_mm)
-        positions_mm = node_heights_mm[np.newaxis, :] + y_mm
-
-        lower = np.zeros_like(thickness)
-        upper = np.zeros_like(thickness)
-        lower[:, 0] = 0.0
-        upper[:, 0] = positions_mm[:, 0]
-        for e in range(1, n_elems):
-            lower[:, e] = positions_mm[:, e - 1]
-            upper[:, e] = positions_mm[:, e]
+    # Always stack elements
+    lower = np.zeros_like(thickness)
+    upper = np.zeros_like(thickness)
+    lower[:, 0] = 0.0
+    upper[:, 0] = thickness[:, 0]
+    for e in range(1, n_elems):
+        lower[:, e] = upper[:, e - 1]
+        upper[:, e] = lower[:, e] + thickness[:, e]
 
     centers = 0.5 * (lower + upper)
     return centers, lower, upper, thickness
@@ -171,9 +154,6 @@ def plot_displacements(
     heights_from_model: dict[str, float] | None = None,
     buttocks_height_mm: float = DEFAULT_BUTTOCKS_HEIGHT_MM,
     reference_frame: str = 'base',
-    show_element_thickness: bool = False,
-    stack_elements: bool = True,
-    buttocks_clamp_to_height: bool = True,
 ) -> None:
     """Plot element centers with buttocks shading and acceleration subplot below."""
     initial_heights_mm = _build_height_map(node_names, heights_from_model, buttocks_height_mm)
@@ -183,8 +163,6 @@ def plot_displacements(
     centers_mm, lower_mm, upper_mm, _thickness = _compute_element_geometry_from_rest(
         y_mm,
         rest_lengths_mm,
-        buttocks_clamp_to_height=buttocks_clamp_to_height,
-        stack_elements=stack_elements,
     )
 
     centers_mm, lower_mm, upper_mm, ylabel, ref_line, ref_label = (
@@ -210,7 +188,7 @@ def plot_displacements(
     colors = plt.cm.viridis(np.linspace(0, 0.9, n_elems))
 
     for i in range(n_elems):
-        if show_element_thickness or i == 0:
+        if i == 0:
             ax1.fill_between(
                 time_ms,
                 lower_mm[:, i],
@@ -292,9 +270,6 @@ def plot_displacement_colored_by_force(
     heights_from_model: dict[str, float] | None = None,
     buttocks_height_mm: float = DEFAULT_BUTTOCKS_HEIGHT_MM,
     reference_frame: str = 'base',
-    show_element_thickness: bool = False,
-    stack_elements: bool = True,
-    buttocks_clamp_to_height: bool = True,
 ) -> None:
     """Plot element centers colored by element force with acceleration subplot below."""
     initial_heights_mm = _build_height_map(node_names, heights_from_model, buttocks_height_mm)
@@ -304,8 +279,6 @@ def plot_displacement_colored_by_force(
     centers_mm, lower_mm, upper_mm, _thickness = _compute_element_geometry_from_rest(
         y_mm,
         rest_lengths_mm,
-        buttocks_clamp_to_height=buttocks_clamp_to_height,
-        stack_elements=stack_elements,
     )
 
     centers_mm, lower_mm, upper_mm, ylabel, ref_line, ref_label = (
@@ -336,7 +309,7 @@ def plot_displacement_colored_by_force(
 
     ax1.axhline(y=ref_line, color='black', linewidth=2.0, label=ref_label)
 
-    if show_element_thickness or n_elems > 0:
+    if n_elems > 0:
         ax1.fill_between(
             time_ms,
             lower_mm[:, 0],
@@ -392,9 +365,6 @@ def plot_gravity_settling(
     *,
     heights_from_model: dict[str, float] | None = None,
     buttocks_height_mm: float = DEFAULT_BUTTOCKS_HEIGHT_MM,
-    show_element_thickness: bool = False,
-    stack_elements: bool = True,
-    buttocks_clamp_to_height: bool = True,
 ) -> None:
     """
     Gravity-settling phase plot.
@@ -411,8 +381,6 @@ def plot_gravity_settling(
     centers_mm, lower_mm, upper_mm, _thickness = _compute_element_geometry_from_rest(
         y_mm,
         rest_lengths_mm,
-        buttocks_clamp_to_height=buttocks_clamp_to_height,
-        stack_elements=stack_elements,
     )
 
     centers_mm, lower_mm, upper_mm, ylabel, ref_line, ref_label = (
@@ -433,7 +401,7 @@ def plot_gravity_settling(
     n_elems = min(len(elem_names), centers_mm.shape[1])
     colors = plt.cm.viridis(np.linspace(0, 0.9, n_elems))
     for i in range(n_elems):
-        if show_element_thickness or i == 0:
+        if i == 0:
             plt.fill_between(
                 time_s * 1000,
                 lower_mm[:, i],
@@ -451,114 +419,6 @@ def plot_gravity_settling(
     plt.title('Gravity Settling Phase (base-referenced)')
     plt.grid(True, alpha=0.3)
     plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=160, bbox_inches='tight')
-    plt.close()
-
-
-def plot_buttocks_only(
-    time_s: np.ndarray,
-    y: np.ndarray,
-    forces_n: np.ndarray,
-    accel_g: np.ndarray,
-    out_path: Path,
-    *,
-    gap_mm: float = 0.0,
-    compression_limit_mm: float | None = None,
-) -> None:
-    time_ms = time_s * 1000.0
-    y_mm = y[:, 0] * 1000.0
-    torso_down_mm = -y_mm
-    compression_mm = np.maximum(-(y_mm + gap_mm), 0.0)
-    force_kN = forces_n[:, 0] / 1000.0
-
-    fig, axes = plt.subplots(
-        3, 1, figsize=(12, 10), sharex=True, gridspec_kw={'height_ratios': [2, 2, 1]}
-    )
-
-    axes[0].plot(time_ms, torso_down_mm, label='Torso downward displacement', linewidth=1.6)
-    axes[0].plot(time_ms, compression_mm, label='Buttocks compression', linewidth=1.6)
-    if compression_limit_mm is not None:
-        axes[0].axhline(
-            y=compression_limit_mm,
-            color='gray',
-            linestyle='--',
-            linewidth=1.0,
-            label='Compression limit',
-        )
-
-    axes[0].set_ylabel('Displacement (mm)')
-    axes[0].set_title('Buttocks-Only Response')
-    axes[0].set_xlim(0, PLOT_DURATION_MS)
-    axes[0].grid(True, alpha=0.3)
-    axes[0].legend(loc='upper right')
-
-    axes[1].plot(time_ms, force_kN, color='tab:blue', linewidth=1.6)
-    axes[1].set_ylabel('Buttocks Force (kN)')
-    axes[1].set_xlim(0, PLOT_DURATION_MS)
-    axes[1].grid(True, alpha=0.3)
-
-    axes[2].plot(time_ms, accel_g, color='tab:red', linewidth=1.2)
-    axes[2].axhline(y=0, color='gray', linewidth=0.8, linestyle='--')
-    axes[2].set_xlabel('Time (ms)')
-    axes[2].set_ylabel('Base Accel (g)')
-    axes[2].set_xlim(0, PLOT_DURATION_MS)
-    axes[2].grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=160, bbox_inches='tight')
-    plt.close()
-
-
-def plot_toen_buttocks_force_compression(
-    time_s: np.ndarray,
-    *,
-    compression_by_floor_mm: dict[str, np.ndarray],
-    force_by_floor_kN: dict[str, np.ndarray],
-    out_path: Path,
-    title: str,
-) -> None:
-    """
-    Overlay plot for Toen drop buttocks response:
-      - Buttocks compression (mm) vs time
-      - Buttocks force (kN) vs time
-
-    Intended for the 2-DOF Toen surrogate in spine_sim/toen_drop.py.
-    """
-    order = ['soft_59', 'medium_67', 'firm_95', 'rigid_400']
-    floors = [f for f in order if f in compression_by_floor_mm and f in force_by_floor_kN]
-    floors += [f for f in compression_by_floor_mm if f not in floors]
-
-    time_ms = time_s * 1000.0
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
-
-    colors = plt.cm.viridis(np.linspace(0.05, 0.9, max(len(floors), 1)))
-
-    for i, floor in enumerate(floors):
-        ax1.plot(
-            time_ms,
-            compression_by_floor_mm[floor],
-            label=floor,
-            linewidth=1.8,
-            color=colors[i],
-        )
-        ax2.plot(
-            time_ms,
-            force_by_floor_kN[floor],
-            label=floor,
-            linewidth=1.8,
-            color=colors[i],
-        )
-
-    ax1.set_title(title)
-    ax1.set_ylabel('Buttocks compression (mm)')
-    ax1.grid(True, alpha=0.3)
-    ax1.legend(ncol=2, fontsize=9)
-
-    ax2.set_xlabel('Time (ms)')
-    ax2.set_ylabel('Buttocks force (kN)')
-    ax2.grid(True, alpha=0.3)
-
     plt.tight_layout()
     plt.savefig(out_path, dpi=160, bbox_inches='tight')
     plt.close()

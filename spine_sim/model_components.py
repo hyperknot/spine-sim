@@ -8,10 +8,9 @@ from spine_sim.model import SpineModel
 def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
     """
     Build the 1D axial chain model:
-      [Base] -- buttocks -- pelvis -- L5 -- ... -- T1 -- C7 -- ... -- C1 -- HEAD
+      [Base] -- buttocks -- pelvis -- L5 -- ... -- T1 -- HEAD
 
-    Disc baseline stiffnesses are from the Raj/Kitazaki distribution already embedded here.
-    Dynamic rate dependence (Kemper multiplier) is applied at runtime in spine_sim/model.py.
+    Note: HEAD is OpenSim's lumped head/neck (incl. cervical) mass, optionally with helmet + recruited arms.
     """
     spine_cfg = config.get('spine', {})
     butt_cfg = config.get('buttock', {})
@@ -52,28 +51,15 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
         'T3',
         'T2',
         'T1',
-        'C7',
-        'C6',
-        'C5',
-        'C4',
-        'C3',
-        'C2',
-        'C1',
         'HEAD',
     ]
 
     masses = np.array([float(mass_map[n]) for n in node_names], dtype=float)
 
-    # Baseline axial stiffnesses (N/m): Raj/Kitazaki as in your original code
+    # Baseline axial stiffnesses (N/m): Raj/Kitazaki distribution used in the original code.
+    # Cervical vertebrae are not explicit here, so the top connection is HEAD-T1.
     k = {
-        'HEAD-C1': 0.55e6,
-        'C1-C2': 0.3e6,
-        'C2-C3': 0.7e6,
-        'C3-C4': 0.76e6,
-        'C4-C5': 0.794e6,
-        'C5-C6': 0.967e6,
-        'C6-C7': 1.014e6,
-        'C7-T1': 1.334e6,
+        'HEAD-T1': 1.334e6,
         'T1-T2': 0.7e6,
         'T2-T3': 1.2e6,
         'T3-T4': 1.5e6,
@@ -112,14 +98,7 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
         'T3-T4',
         'T2-T3',
         'T1-T2',
-        'C7-T1',
-        'C6-C7',
-        'C5-C6',
-        'C4-C5',
-        'C3-C4',
-        'C2-C3',
-        'C1-C2',
-        'HEAD-C1',
+        'HEAD-T1',
     ]
 
     # Stiffness per element (element 0 is buttocks, filled from config)
@@ -134,8 +113,7 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
     c_elem[0] = 0.0  # buttocks filled from config
     c_elem[1:] = c_disc
 
-    # Buttocks parameters (bilinear + contact)
-    butt_gap_mm = float(butt_cfg.get('gap_mm', 0.0))
+    # Buttocks parameters (bilinear + contact), gap removed (always 0)
     k1 = float(butt_cfg.get('k1_n_per_m', 0.0))
     c_butt = float(butt_cfg.get('c_ns_per_m', 0.0))
     bottom_out_force_kN = float(butt_cfg.get('bottom_out_force_kN', 0.0))
@@ -158,7 +136,6 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
         c_elem_ns_per_m=c_elem,
         disc_height_m=float(disc_height_mm) / 1000.0,
         tension_k_mult=tension_k_mult,
-        buttocks_gap_m=float(butt_gap_mm) / 1000.0,
         buttocks_k1_n_per_m=k1,
         buttocks_k2_n_per_m=k2,
         buttocks_bottom_out_force_n=float(bottom_out_force_kN) * 1000.0,

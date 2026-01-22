@@ -9,17 +9,15 @@ from pathlib import Path
 import numpy as np
 
 from spine_sim.config import (
-    DEFAULT_DROP_INPUTS_DIR,
-    DEFAULT_DROP_OUTPUT_DIR,
-    DEFAULT_DROP_PATTERN,
     DEFAULT_MASSES_JSON,
+    REPO_ROOT,
     load_masses,
     read_config,
     resolve_path,
 )
-from spine_sim.input_processing import DEFAULT_DROP_BASELINE_CORRECTION, process_input
+from spine_sim.input_processing import process_input
 from spine_sim.mass import build_mass_map
-from spine_sim.model import G0, initial_state_static, newmark_nonlinear
+from spine_sim.model import initial_state_static, newmark_nonlinear
 from spine_sim.model_components import build_spine_model
 from spine_sim.output import write_timeseries_csv
 from spine_sim.plotting import (
@@ -32,12 +30,15 @@ from spine_sim.plotting import (
 from spine_sim.range import DEFAULT_FREEFALL_THRESHOLD_G, DEFAULT_PEAK_THRESHOLD_G
 
 
-def _get_plotting_config(config: dict) -> tuple[float, bool, bool, bool, dict | None]:
+# Hard-coded IO
+INPUTS_DIR = REPO_ROOT / 'drops'
+INPUT_PATTERN = '*.csv'
+OUTPUT_DIR = REPO_ROOT / 'output'
+
+
+def _get_plotting_config(config: dict) -> tuple[float, dict | None]:
     plot_cfg = config.get('plotting', {})
     buttocks_height_mm = float(plot_cfg.get('buttocks_height_mm', DEFAULT_BUTTOCKS_HEIGHT_MM))
-    show_element_thickness = bool(plot_cfg.get('show_element_thickness', False))
-    stack_elements = bool(plot_cfg.get('stack_elements', True))
-    buttocks_clamp_to_height = bool(plot_cfg.get('buttocks_clamp_to_height', True))
 
     masses_path = resolve_path(
         str(config.get('model', {}).get('masses_json', str(DEFAULT_MASSES_JSON)))
@@ -47,9 +48,6 @@ def _get_plotting_config(config: dict) -> tuple[float, bool, bool, bool, dict | 
 
     return (
         buttocks_height_mm,
-        show_element_thickness,
-        stack_elements,
-        buttocks_clamp_to_height,
         heights_from_model,
     )
 
@@ -78,7 +76,6 @@ def run_simulate_drop(echo=print) -> list[dict]:
     solver_cfg = config.get('solver', {})
     model_cfg = config.get('model', {})
     spine_cfg = config.get('spine', {})
-    butt_cfg = config.get('buttock', {})
 
     # Internal solver settings
     dt_internal_s = float(solver_cfg.get('dt_internal_s', 0.00005))
@@ -92,7 +89,7 @@ def run_simulate_drop(echo=print) -> list[dict]:
         masses,
         arm_recruitment=float(model_cfg.get('arm_recruitment', 0.5)),
         helmet_mass=float(model_cfg.get('helmet_mass_kg', 0.0)),
-        cervical_vertebra_mass_kg=float(model_cfg.get('cervical_vertebra_mass_kg', 0.15)),
+        echo=echo,
     )
 
     model = build_spine_model(mass_map, config)
@@ -104,7 +101,6 @@ def run_simulate_drop(echo=print) -> list[dict]:
     echo(f'  k1 = {model.buttocks_k1_n_per_m:.3g} N/m')
     echo(f'  k2 = {model.buttocks_k2_n_per_m:.3g} N/m')
     echo(f'  c  = {model.buttocks_c_ns_per_m:.3g} Ns/m (contact-only, closing-only)')
-    echo(f'  gap = {model.buttocks_gap_m * 1000.0:.3f} mm')
     echo(f'  bottom_out_force = {model.buttocks_bottom_out_force_n / 1000.0:.3f} kN')
     echo(f'  implied bottom_out_compression = {x0_mm:.3f} mm')
 
@@ -121,13 +117,11 @@ def run_simulate_drop(echo=print) -> list[dict]:
     echo(f'  dt_internal = {dt_internal_s * 1000.0:.3f} ms ({1.0/dt_internal_s:.1f} Hz)')
     echo(f'  Newmark/Newton: max_iter={max_newton_iter}, tol={newton_tol:g}')
 
-    buttocks_height_mm, show_element_thickness, stack_elements, buttocks_clamp_to_height, heights_from_model = (
-        _get_plotting_config(config)
-    )
+    buttocks_height_mm, heights_from_model = _get_plotting_config(config)
 
-    inputs_dir = resolve_path(str(drop_cfg.get('inputs_dir', str(DEFAULT_DROP_INPUTS_DIR))))
-    pattern = str(drop_cfg.get('pattern', DEFAULT_DROP_PATTERN))
-    out_dir = resolve_path(str(drop_cfg.get('output_dir', str(DEFAULT_DROP_OUTPUT_DIR))))
+    inputs_dir = INPUTS_DIR
+    pattern = INPUT_PATTERN
+    out_dir = OUTPUT_DIR
 
     files = sorted(inputs_dir.glob(pattern))
     if not files:
@@ -158,7 +152,6 @@ def run_simulate_drop(echo=print) -> list[dict]:
             style_threshold_ms=float(drop_cfg.get('style_duration_threshold_ms', 300.0)),
             peak_threshold_g=float(drop_cfg.get('peak_threshold_g', DEFAULT_PEAK_THRESHOLD_G)),
             freefall_threshold_g=float(drop_cfg.get('freefall_threshold_g', DEFAULT_FREEFALL_THRESHOLD_G)),
-            drop_baseline_correction=bool(drop_cfg.get('drop_baseline_correction', DEFAULT_DROP_BASELINE_CORRECTION)),
         )
 
         t, a_g = _interpolate_to_internal_dt(
@@ -204,9 +197,6 @@ def run_simulate_drop(echo=print) -> list[dict]:
                 run_dir / 'gravity_settling.png',
                 heights_from_model=heights_from_model,
                 buttocks_height_mm=buttocks_height_mm,
-                show_element_thickness=show_element_thickness,
-                stack_elements=stack_elements,
-                buttocks_clamp_to_height=buttocks_clamp_to_height,
             )
 
             y0, v0 = sim_settle.y[-1].copy(), sim_settle.v[-1].copy()
@@ -237,9 +227,8 @@ def run_simulate_drop(echo=print) -> list[dict]:
 
         # Buttocks bottom-out metrics (computed from force threshold -> implied displacement)
         x0_mm = model.buttocks_bottom_out_compression_m() * 1000.0
-        butt_gap_mm = model.buttocks_gap_m * 1000.0
         y_pelvis_m = sim.y[:, pelvis_idx]
-        butt_comp_m = np.maximum(-(y_pelvis_m + model.buttocks_gap_m), 0.0)
+        butt_comp_m = np.maximum(-y_pelvis_m, 0.0)
         butt_comp_max_mm = float(np.max(butt_comp_m) * 1000.0)
         butt_bottomed_out = bool((model.buttocks_bottom_out_force_n > 0.0) and (butt_comp_max_mm > x0_mm))
 
@@ -249,7 +238,6 @@ def run_simulate_drop(echo=print) -> list[dict]:
         frac_over = float(np.mean(eps_over)) if eps_over.size else 0.0
 
         if eps_smooth_max > warn_threshold:
-            # Report which elements exceeded and their maxima
             per_elem_max = np.max(sim.strain_rate_per_s, axis=0)
             offenders = [
                 (model.element_names[i], float(per_elem_max[i]))
@@ -288,9 +276,6 @@ def run_simulate_drop(echo=print) -> list[dict]:
             heights_from_model=heights_from_model,
             buttocks_height_mm=buttocks_height_mm,
             reference_frame='base',
-            show_element_thickness=show_element_thickness,
-            stack_elements=stack_elements,
-            buttocks_clamp_to_height=buttocks_clamp_to_height,
         )
         plot_forces(
             sim.time_s,
@@ -311,18 +296,11 @@ def run_simulate_drop(echo=print) -> list[dict]:
             heights_from_model=heights_from_model,
             buttocks_height_mm=buttocks_height_mm,
             reference_frame='base',
-            show_element_thickness=show_element_thickness,
-            stack_elements=stack_elements,
-            buttocks_clamp_to_height=buttocks_clamp_to_height,
         )
 
         echo(f'  Style: {info["style"]}')
         echo(f'  Input sample rate (post-resample): {info["sample_rate_hz"]:.1f} Hz')
         echo(f'  Internal solver rate: {1.0/dt_internal_s:.1f} Hz')
-        if info['style'] == 'drop':
-            echo(
-                f'  Baseline correction: {"applied" if info["bias_applied"] else "not applied"} (bias={info["bias_g"]:.4f} g)'
-            )
         echo(f'  Base accel: peak={peak_base_g:.2f} g, min={min_base_g:.2f} g')
         echo(f'  Peak buttocks: {peak_butt_kN:.2f} kN')
         echo(f'  Peak T12-L1: {peak_t12_kN:.2f} kN @ {t_peak_ms:.1f} ms')
@@ -337,8 +315,6 @@ def run_simulate_drop(echo=print) -> list[dict]:
                 'style': info['style'],
                 'input_sample_rate_hz': info['sample_rate_hz'],
                 'internal_solver_rate_hz': 1.0 / dt_internal_s,
-                'baseline_correction_applied': info['bias_applied'],
-                'baseline_correction_g': info['bias_g'],
                 'base_accel_peak_g': peak_base_g,
                 'base_accel_min_g': min_base_g,
                 'peak_buttocks_kN': peak_butt_kN,
@@ -346,7 +322,6 @@ def run_simulate_drop(echo=print) -> list[dict]:
                 'time_to_peak_ms': t_peak_ms,
                 'max_spine_shortening_mm': max_spine_shortening_mm,
                 'buttocks': {
-                    'gap_mm': butt_gap_mm,
                     'k1_n_per_m': model.buttocks_k1_n_per_m,
                     'k2_n_per_m': model.buttocks_k2_n_per_m,
                     'c_ns_per_m': model.buttocks_c_ns_per_m,
@@ -354,7 +329,9 @@ def run_simulate_drop(echo=print) -> list[dict]:
                     'implied_bottom_out_compression_mm': x0_mm,
                     'max_compression_mm': butt_comp_max_mm,
                     'bottomed_out': bool(butt_bottomed_out),
-                    'compression_overshoot_mm': float(max(0.0, butt_comp_max_mm - x0_mm)) if model.buttocks_bottom_out_force_n > 0.0 else 0.0,
+                    'compression_overshoot_mm': float(max(0.0, butt_comp_max_mm - x0_mm))
+                    if model.buttocks_bottom_out_force_n > 0.0
+                    else 0.0,
                 },
                 'strain_rate': {
                     'warn_over_eps_per_s': warn_threshold,

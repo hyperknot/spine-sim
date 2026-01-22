@@ -2,8 +2,7 @@
   "model": {
     "masses_json": "opensim/fullbody.json",
     "arm_recruitment": 0.5,
-    "helmet_mass_kg": 0.0,
-    "cervical_vertebra_mass_kg": 0.15
+    "helmet_mass_kg": 0.7
   },
   "solver": {
     "dt_internal_s": 0.00005,
@@ -11,19 +10,14 @@
     "newton_tol": 1e-9
   },
   "drop": {
-    "inputs_dir": "drops",
-    "pattern": "*.csv",
-    "output_dir": "output/drop",
     "cfc": 75,
     "style_duration_threshold_ms": 300.0,
     "sim_duration_ms": 200.0,
     "gravity_settle_ms": 150.0,
-    "drop_baseline_correction": false,
     "peak_threshold_g": 5.0,
     "freefall_threshold_g": -0.85
   },
   "buttock": {
-    "gap_mm": 0.0,
     "k1_n_per_m": 180500.0,
     "c_ns_per_m": 3130.0,
     "bottom_out_force_kN": 7.0,
@@ -41,9 +35,6 @@
     }
   },
   "plotting": {
-    "buttocks_height_mm": 100.0,
-    "show_element_thickness": false,
-    "stack_elements": true,
-    "buttocks_clamp_to_height": true
+    "buttocks_height_mm": 90.0
   }
 }

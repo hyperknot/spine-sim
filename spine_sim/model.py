@@ -33,8 +33,7 @@ class SpineModel:
     disc_height_m: float
     tension_k_mult: float
 
-    # Buttocks bilinear contact parameters
-    buttocks_gap_m: float
+    # Buttocks bilinear contact parameters (gap removed; always 0)
     buttocks_k1_n_per_m: float
     buttocks_k2_n_per_m: float
     buttocks_bottom_out_force_n: float
@@ -112,19 +111,15 @@ def _buttocks_force_and_partials(
 ) -> tuple[float, float, float, float]:
     """
     Buttocks element (base-to-pelvis) with:
-      - gap (free flight)
-      - compression-only contact
+      - compression-only contact (gap removed; always 0)
       - bilinear spring with bottom-out specified by force threshold
       - damping: contact-only and closing-only (so it can't "pull" in tension).
 
     Returns:
       F, dF_dext, dF_drelv, compression_x_m
     """
-    gap = float(model.buttocks_gap_m)
-    ext_eff = float(ext_m) + gap
-
-    # compression x = max(-(ext_eff), 0)
-    x = max(-ext_eff, 0.0)
+    # compression x = max(-ext, 0)
+    x = max(-float(ext_m), 0.0)
     in_contact = x > 0.0
 
     if not in_contact:
@@ -317,13 +312,6 @@ def newmark_nonlinear(
 ) -> SimulationResult:
     """
     Nonlinear Newmark-beta integration with per-timestep frozen disc stiffness.
-
-    Disc stiffness update rule per timestep:
-      - compute raw strain rate from current iteration's v_guess (first iteration),
-      - update smoothed strain rate once for the timestep,
-      - freeze k_disc_step for all Newton iterations in that timestep.
-
-    This matches your request: "frozen stiffness per timestep" and adds stability.
     """
     n = model.size()
     ne = model.n_elems()
@@ -380,9 +368,6 @@ def newmark_nonlinear(
     eps_hist[0] = eps_raw0
     k_hist[0] = k_disc_step
     a[0] = np.linalg.solve(M, f_int0 + f_base0)
-
-    # Track warnings
-    max_eps_seen = 0.0
 
     for k in range(t.size - 1):
         y_n = y[k].copy()
@@ -468,9 +453,6 @@ def newmark_nonlinear(
         eps_hist[k + 1] = eps_raw_last
         k_hist[k + 1] = k_disc_frozen if k_disc_frozen is not None else k_disc_step
 
-        max_eps_seen = max(max_eps_seen, float(np.max(eps_smooth)))
-
-    # Attach max_eps_seen for caller via result arrays; caller can decide to warn
     return SimulationResult(
         time_s=t,
         base_accel_g=a_g,

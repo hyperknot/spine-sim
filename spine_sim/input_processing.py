@@ -7,36 +7,12 @@ from pathlib import Path
 import numpy as np
 from spine_sim.filters import cfc_filter
 from spine_sim.io import parse_csv_series, resample_to_uniform
-from spine_sim.range import DEFAULT_FREEFALL_THRESHOLD_G, DEFAULT_PEAK_THRESHOLD_G, find_hit_range
-
-
-# Whether to apply freefall baseline correction by default.
-# This corrects accelerometer drift by adjusting freefall phase to exactly -1g.
-DEFAULT_DROP_BASELINE_CORRECTION = False
+from spine_sim.range import find_hit_range
 
 
 def detect_style(duration_ms: float, threshold_ms: float) -> str:
     """Detect input style based on duration."""
     return 'flat' if duration_ms < threshold_ms else 'drop'
-
-
-def freefall_bias_correct(accel_g: np.ndarray, apply: bool) -> tuple[np.ndarray, bool, float]:
-    """Apply freefall bias correction to acceleration data.
-
-    Args:
-        accel_g: Acceleration in g.
-        apply: Whether to apply the correction.
-
-    Returns:
-        Tuple of (corrected_accel, was_applied, bias_value).
-    """
-    samples = (
-        accel_g[50:100] if len(accel_g) >= 100 else accel_g[50:] if len(accel_g) > 50 else accel_g
-    )
-    if samples.size == 0:
-        return accel_g, False, 0.0
-    bias = -1.0 - float(np.median(samples))
-    return (accel_g + bias, True, bias) if apply else (accel_g, False, bias)
 
 
 def process_input(
@@ -46,18 +22,8 @@ def process_input(
     style_threshold_ms: float,
     peak_threshold_g: float,
     freefall_threshold_g: float,
-    drop_baseline_correction: bool,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     """Process acceleration input file for simulation.
-
-    Args:
-        path: Path to CSV file with time and acceleration columns.
-        cfc: CFC filter frequency.
-        sim_duration_ms: Target simulation duration in milliseconds.
-        style_threshold_ms: Threshold to distinguish flat vs drop style.
-        peak_threshold_g: Threshold for peak detection in g.
-        freefall_threshold_g: Threshold for freefall detection in g.
-        drop_baseline_correction: Whether to apply baseline correction for drops.
 
     Returns:
         Tuple of (time_s, accel_g, info_dict).
@@ -92,8 +58,6 @@ def process_input(
                 'style': 'flat',
                 'dt_s': dt,
                 'sample_rate_hz': sample_rate,
-                'bias_applied': False,
-                'bias_g': 0.0,
                 'duration_ms': total_ms,
                 'raw_min_g': raw_min_g,
                 'raw_max_g': raw_max_g,
@@ -106,7 +70,6 @@ def process_input(
 
     t_seg = t_all[start_idx : end_idx + 1] - t_all[start_idx]
     a_seg = accel_filtered[start_idx : end_idx + 1]
-    a_seg, applied, bias = freefall_bias_correct(a_seg, drop_baseline_correction)
 
     desired_n = int(round((sim_duration_ms / 1000.0) / dt)) + 1
     if len(t_seg) < desired_n:
@@ -122,8 +85,6 @@ def process_input(
             'style': 'drop',
             'dt_s': dt,
             'sample_rate_hz': sample_rate,
-            'bias_applied': applied,
-            'bias_g': bias,
             'duration_ms': total_ms,
             'raw_min_g': raw_min_g,
             'raw_max_g': raw_max_g,
