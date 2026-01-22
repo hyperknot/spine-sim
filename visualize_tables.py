@@ -18,6 +18,8 @@ def load_data(json_path):
         data = json.load(f)
 
     result = {}
+    bottom_out_compression = None
+
     for entry in data:
         # Parse filename: e.g., "1.0-10-1000.csv"
         parts = entry['file'].replace('.csv', '').split('-')
@@ -29,15 +31,19 @@ def load_data(json_path):
             'peak_g': entry['base_accel_peak_g']
         }
 
-    return result
+        # Capture bottom_out_compression_mm (same across all entries in a file)
+        if 'bottom_out_compression_mm' in entry:
+            bottom_out_compression = entry['bottom_out_compression_mm']
+
+    return result, bottom_out_compression
 
 
 def main():
     output_dir = Path(__file__).parent / 'output'
 
     # Load both datasets
-    unlimited_data = load_data(output_dir / 'unlimited-180.json')
-    fixed_data = load_data(output_dir / 'fixed-180-7.json')
+    unlimited_data, _ = load_data(output_dir / 'unlimited-180.json')
+    fixed_data, bottom_out_mm = load_data(output_dir / 'fixed-180-7.json')
 
     # Get all unique drop rates and jerk limits
     all_keys = set(unlimited_data.keys()) | set(fixed_data.keys())
@@ -164,8 +170,14 @@ def main():
     # Plot both tables
     plot_table(ax1, unlimited_matrix, unlimited_data,
                'Buttock tissue\nno bottoming out limit')
-    plot_table(ax2, fixed_matrix, fixed_data,
-               'Buttock tissue\nbottoms out at 7kN (~38mm compression)')
+
+    # Build title with bottom_out_compression from JSON
+    if bottom_out_mm is not None:
+        fixed_title = f'Buttock tissue\nbottoms out at 7kN (~{bottom_out_mm:.0f}mm compression)'
+    else:
+        fixed_title = 'Buttock tissue\nbottoms out at 7kN'
+
+    plot_table(ax2, fixed_matrix, fixed_data, fixed_title)
 
     # Save only (no display)
     output_path = output_dir / 'comparison_table.png'
