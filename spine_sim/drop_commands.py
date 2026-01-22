@@ -70,8 +70,18 @@ def _interpolate_to_internal_dt(
     return t, a
 
 
-def run_simulate_drop(echo=print) -> list[dict]:
+def run_simulate_drop(
+    echo=print,
+    buttock_override: dict | None = None,
+    output_filename: str | None = None,
+) -> list[dict]:
     config = read_config()
+
+    # Apply buttock overrides if provided
+    if buttock_override:
+        if 'buttock' not in config:
+            config['buttock'] = {}
+        config['buttock'].update(buttock_override)
     drop_cfg = config.get('drop', {})
     solver_cfg = config.get('solver', {})
     model_cfg = config.get('model', {})
@@ -342,6 +352,7 @@ def run_simulate_drop(echo=print) -> list[dict]:
             }
         )
 
-    (out_dir / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
-    echo(f'\nResults written to {out_dir}/')
+    summary_filename = output_filename or 'summary.json'
+    (out_dir / summary_filename).write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
+    echo(f'\nResults written to {out_dir}/{summary_filename}')
     return summary

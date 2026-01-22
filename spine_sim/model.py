@@ -113,7 +113,9 @@ def _buttocks_force_and_partials(
     Buttocks element (base-to-pelvis) with:
       - compression-only contact (gap removed; always 0)
       - bilinear spring with bottom-out specified by force threshold
-      - damping: contact-only and closing-only (so it can't "pull" in tension).
+      - damping: contact-only (active while in contact). Damping acts for both
+        closing and opening, but the total contact force is clamped to be
+        non-negative (the contact cannot "pull" in tension).
 
     Returns:
       F, dF_dext, dF_drelv, compression_x_m
@@ -142,14 +144,18 @@ def _buttocks_force_and_partials(
         f_s = k1 * x
         dF_dx = k1
 
-    # Damping: only when closing (relv < 0) while in contact
+    # Damping: active in contact for both closing and opening
     c = float(model.buttocks_c_ns_per_m)
-    use_damp = (relv_mps < 0.0) and (c > 0.0)
-    f_d = (-c * relv_mps) if use_damp else 0.0
+    f_d = (-c * float(relv_mps)) if (c > 0.0) else 0.0
 
     f = f_s + f_d
+
+    # Contact cannot pull: clamp to non-negative force
+    if f <= 0.0:
+        return 0.0, 0.0, 0.0, x
+
     dF_dext = -dF_dx
-    dF_drelv = (-c if use_damp else 0.0)
+    dF_drelv = (-c if c > 0.0 else 0.0)
     return f, dF_dext, dF_drelv, x
 
 
