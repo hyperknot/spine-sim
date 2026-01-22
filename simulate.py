@@ -31,9 +31,9 @@ def main() -> None:
         for k1, c, stiff_label in BATCH_STIFFNESS_DAMPING:
             for force, force_label in BATCH_BOTTOM_OUT:
                 output_filename = f'{stiff_label}-{force_label}.json'
-                print(f'\n{"="*60}')
+                print(f'\n{"=" * 60}')
                 print(f'BATCH: k1={k1}, c={c}, bottom_out={force} -> {output_filename}')
-                print(f'{"="*60}')
+                print(f'{"=" * 60}')
                 run_simulate_drop(
                     echo=print,
                     buttock_override={

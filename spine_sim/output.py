@@ -52,6 +52,9 @@ def write_timeseries_csv(
             if strain_rate_per_s is not None:
                 row += [f'{strain_rate_per_s[i, j]:.6f}' for j in range(strain_rate_per_s.shape[1])]
             if k_dynamic_n_per_m is not None:
-                row += [f'{(k_dynamic_n_per_m[i, j] / 1.0e6):.6f}' for j in range(k_dynamic_n_per_m.shape[1])]
+                row += [
+                    f'{(k_dynamic_n_per_m[i, j] / 1.0e6):.6f}'
+                    for j in range(k_dynamic_n_per_m.shape[1])
+                ]
 
             w.writerow(row)

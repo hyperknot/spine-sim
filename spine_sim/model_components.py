@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import numpy as np
-
 from spine_sim.model import SpineModel
+from spine_sim.settings import req_float
 
 
 def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
@@ -12,22 +12,19 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
 
     Note: HEAD is OpenSim's lumped head/neck (incl. cervical) mass, optionally with helmet + recruited arms.
     """
-    spine_cfg = config.get('spine', {})
-    butt_cfg = config.get('buttock', {})
-
-    stiffness_scale = float(spine_cfg.get('stiffness_scale', 1.0))
+    stiffness_scale = float(req_float(config, ['spine', 'stiffness_scale']))
     if stiffness_scale <= 0.0:
         raise ValueError('spine.stiffness_scale must be > 0.')
 
-    disc_height_mm = float(spine_cfg.get('disc_height_mm', 11.3))
+    disc_height_mm = float(req_float(config, ['spine', 'disc_height_mm']))
     if disc_height_mm <= 0.0:
         raise ValueError('spine.disc_height_mm must be > 0.')
 
-    tension_k_mult = float(spine_cfg.get('tension_k_mult', 0.1))
+    tension_k_mult = float(req_float(config, ['spine', 'tension_k_mult']))
     if tension_k_mult < 0.0:
         raise ValueError('spine.tension_k_mult must be >= 0.')
 
-    c_disc = float(spine_cfg.get('damping_ns_per_m', 1200.0))
+    c_disc = float(req_float(config, ['spine', 'damping_ns_per_m']))
     if c_disc < 0.0:
         raise ValueError('spine.damping_ns_per_m must be >= 0.')
 
@@ -56,7 +53,7 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
 
     masses = np.array([float(mass_map[n]) for n in node_names], dtype=float)
 
-    # Baseline axial stiffnesses (N/m): Raj/Kitazaki distribution used in the original code.
+    # Baseline axial stiffnesses (N/m): Kitazaki/Griffin distribution.
     # Cervical vertebrae are not explicit here, so the top connection is HEAD-T1.
     k = {
         'HEAD-T1': 1.334e6,
@@ -114,10 +111,10 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
     c_elem[1:] = c_disc
 
     # Buttocks parameters (bilinear + contact), gap removed (always 0)
-    k1 = float(butt_cfg.get('k1_n_per_m', 0.0))
-    c_butt = float(butt_cfg.get('c_ns_per_m', 0.0))
-    bottom_out_force_kN = float(butt_cfg.get('bottom_out_force_kN', 0.0))
-    k2 = float(butt_cfg.get('k2_n_per_m', 0.0))
+    k1 = float(req_float(config, ['buttock', 'k1_n_per_m']))
+    c_butt = float(req_float(config, ['buttock', 'c_ns_per_m']))
+    bottom_out_force_kN = float(req_float(config, ['buttock', 'bottom_out_force_kN']))
+    k2 = float(req_float(config, ['buttock', 'k2_n_per_m']))
 
     if k1 <= 0.0:
         raise ValueError('buttock.k1_n_per_m must be > 0.')
@@ -140,7 +137,12 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
         buttocks_k2_n_per_m=k2,
         buttocks_bottom_out_force_n=float(bottom_out_force_kN) * 1000.0,
         buttocks_c_ns_per_m=c_butt,
-        kemper_normalize_to_eps_per_s=float(spine_cfg.get('kemper', {}).get('normalize_to_eps_per_s', 0.0)),
-        strain_rate_smoothing_tau_s=float(spine_cfg.get('kemper', {}).get('strain_rate_smoothing_tau_ms', 2.0)) / 1000.0,
-        warn_over_eps_per_s=float(spine_cfg.get('kemper', {}).get('warn_over_eps_per_s', 73.0)),
+        kemper_normalize_to_eps_per_s=float(
+            req_float(config, ['spine', 'kemper', 'normalize_to_eps_per_s'])
+        ),
+        strain_rate_smoothing_tau_s=float(
+            req_float(config, ['spine', 'kemper', 'strain_rate_smoothing_tau_ms'])
+        )
+        / 1000.0,
+        warn_over_eps_per_s=float(req_float(config, ['spine', 'kemper', 'warn_over_eps_per_s'])),
     )

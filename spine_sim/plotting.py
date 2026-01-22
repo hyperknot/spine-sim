@@ -7,14 +7,10 @@ import numpy as np
 from matplotlib.collections import LineCollection
 
 
-PLOT_DURATION_MS = 200.0
-DEFAULT_BUTTOCKS_HEIGHT_MM = 100.0
-
-
 def _build_height_map(
     node_names: list[str],
     heights_from_model: dict[str, float] | None,
-    buttocks_height_mm: float = DEFAULT_BUTTOCKS_HEIGHT_MM,
+    buttocks_height_mm: float,
 ) -> np.ndarray:
     name_map = {
         'pelvis': 'pelvis',
@@ -151,8 +147,9 @@ def plot_displacements(
     elem_names: list[str],
     out_path: Path,
     *,
-    heights_from_model: dict[str, float] | None = None,
-    buttocks_height_mm: float = DEFAULT_BUTTOCKS_HEIGHT_MM,
+    heights_from_model: dict[str, float] | None,
+    buttocks_height_mm: float,
+    plot_duration_ms: float,
     reference_frame: str = 'base',
 ) -> None:
     """Plot element centers with buttocks shading and acceleration subplot below."""
@@ -204,7 +201,7 @@ def plot_displacements(
 
     ax1.set_ylabel(ylabel)
     ax1.set_title('Compressible Element Centers During Impact')
-    ax1.set_xlim(0, PLOT_DURATION_MS)
+    ax1.set_xlim(0, plot_duration_ms)
     ax1.set_ylim(ymin - 20.0, ymax + 20.0)
     ax1.grid(True, alpha=0.3)
     ax1.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
@@ -213,7 +210,7 @@ def plot_displacements(
     ax2.axhline(y=0, color='gray', linewidth=0.8, linestyle='--')
     ax2.set_xlabel('Time (ms)')
     ax2.set_ylabel('Base Accel (g)')
-    ax2.set_xlim(0, PLOT_DURATION_MS)
+    ax2.set_xlim(0, plot_duration_ms)
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -228,6 +225,8 @@ def plot_forces(
     elem_names: list[str],
     out_path: Path,
     highlight: str,
+    *,
+    plot_duration_ms: float,
 ) -> None:
     """Plot junction forces with acceleration subplot below."""
     time_ms = time_s * 1000
@@ -242,7 +241,7 @@ def plot_forces(
 
     ax1.set_ylabel('Force (kN)')
     ax1.set_title('Junction Forces vs Time (Compression Positive)')
-    ax1.set_xlim(0, PLOT_DURATION_MS)
+    ax1.set_xlim(0, plot_duration_ms)
     ax1.grid(True, alpha=0.3)
     ax1.legend(ncol=2, fontsize=8)
 
@@ -250,7 +249,7 @@ def plot_forces(
     ax2.axhline(y=0, color='gray', linewidth=0.8, linestyle='--')
     ax2.set_xlabel('Time (ms)')
     ax2.set_ylabel('Base Accel (g)')
-    ax2.set_xlim(0, PLOT_DURATION_MS)
+    ax2.set_xlim(0, plot_duration_ms)
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -267,8 +266,9 @@ def plot_displacement_colored_by_force(
     elem_names: list[str],
     out_path: Path,
     *,
-    heights_from_model: dict[str, float] | None = None,
-    buttocks_height_mm: float = DEFAULT_BUTTOCKS_HEIGHT_MM,
+    heights_from_model: dict[str, float] | None,
+    buttocks_height_mm: float,
+    plot_duration_ms: float,
     reference_frame: str = 'base',
 ) -> None:
     """Plot element centers colored by element force with acceleration subplot below."""
@@ -330,7 +330,7 @@ def plot_displacement_colored_by_force(
         lc = LineCollection(segments, colors=colors, linewidths=1.6)
         ax1.add_collection(lc)
 
-    ax1.set_xlim(0, PLOT_DURATION_MS)
+    ax1.set_xlim(0, plot_duration_ms)
     ymin = float(np.min(lower_mm[:, :n_elems]))
     ymax = float(np.max(upper_mm[:, :n_elems]))
     ax1.set_ylim(ymin - 20.0, ymax + 20.0)
@@ -348,7 +348,7 @@ def plot_displacement_colored_by_force(
     ax2.axhline(y=0, color='gray', linewidth=0.8, linestyle='--')
     ax2.set_xlabel('Time (ms)')
     ax2.set_ylabel('Base Accel (g)')
-    ax2.set_xlim(0, PLOT_DURATION_MS)
+    ax2.set_xlim(0, plot_duration_ms)
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -363,8 +363,8 @@ def plot_gravity_settling(
     elem_names: list[str],
     out_path: Path,
     *,
-    heights_from_model: dict[str, float] | None = None,
-    buttocks_height_mm: float = DEFAULT_BUTTOCKS_HEIGHT_MM,
+    heights_from_model: dict[str, float] | None,
+    buttocks_height_mm: float,
 ) -> None:
     """
     Gravity-settling phase plot.

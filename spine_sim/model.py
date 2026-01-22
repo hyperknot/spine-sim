@@ -113,9 +113,8 @@ def _buttocks_force_and_partials(
     Buttocks element (base-to-pelvis) with:
       - compression-only contact (gap removed; always 0)
       - bilinear spring with bottom-out specified by force threshold
-      - damping: contact-only (active while in contact). Damping acts for both
-        closing and opening, but the total contact force is clamped to be
-        non-negative (the contact cannot "pull" in tension).
+      - damping: contact-only, active for both closing and opening. Total contact
+        force is clamped to be non-negative (contact cannot "pull" in tension).
 
     Returns:
       F, dF_dext, dF_drelv, compression_x_m
@@ -150,27 +149,27 @@ def _buttocks_force_and_partials(
 
     f = f_s + f_d
 
-    # Contact cannot pull: clamp to non-negative force
+    # Contact cannot pull
     if f <= 0.0:
         return 0.0, 0.0, 0.0, x
 
     dF_dext = -dF_dx
-    dF_drelv = (-c if c > 0.0 else 0.0)
+    dF_drelv = -c if c > 0.0 else 0.0
     return f, dF_dext, dF_drelv, x
 
 
 def _disc_force_and_partials(
     *,
-    k_n_per_m: float,
+    k_comp_n_per_m: float,
+    k_tension_n_per_m: float,
     c_ns_per_m: float,
-    tension_k_mult: float,
     ext_m: float,
     relv_mps: float,
 ) -> tuple[float, float, float, float]:
     """
     Disc Kelvin-Voigt with:
-      - compression stiffness = k
-      - tension stiffness = k * tension_k_mult
+      - compression stiffness = k_comp (rate-dependent via Kemper multiplier)
+      - tension stiffness = k_tension (constant baseline * tension_k_mult; NOT rate-dependent)
       - damping symmetric (always active)
 
     Returns:
@@ -181,11 +180,12 @@ def _disc_force_and_partials(
     if ext < 0.0:
         # compression
         x = -ext
-        f_s = float(k_n_per_m) * x
-        dF_dext = -float(k_n_per_m)
+        k_c = float(k_comp_n_per_m)
+        f_s = k_c * x
+        dF_dext = -k_c
     else:
-        # tension
-        k_t = float(k_n_per_m) * float(tension_k_mult)
+        # tension (constant, not Kemper-scaled)
+        k_t = float(k_tension_n_per_m)
         f_s = -k_t * ext
         dF_dext = -k_t
 
@@ -202,7 +202,7 @@ def _assemble_forces_and_tangent(
     v: np.ndarray,
     dv_dy_coeff: float,
     *,
-    k_disc_step: np.ndarray,
+    k_comp_step: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Assemble nodal internal force vector f_node (positive upward sign convention as in original code),
@@ -241,10 +241,14 @@ def _assemble_forces_and_tangent(
 
         eps_raw[e] = _disc_strain_rate_per_s(model, relv)
 
+        # Compression uses Kemper-scaled stiffness; tension uses constant baseline * tension_k_mult
+        k_comp = float(k_comp_step[e])
+        k_tension = float(model.k0_elem_n_per_m[e]) * float(model.tension_k_mult)
+
         F, dF_dext, dF_drelv, _ = _disc_force_and_partials(
-            k_n_per_m=float(k_disc_step[e]),
+            k_comp_n_per_m=k_comp,
+            k_tension_n_per_m=k_tension,
             c_ns_per_m=float(model.c_elem_ns_per_m[e]),
-            tension_k_mult=float(model.tension_k_mult),
             ext_m=ext,
             relv_mps=relv,
         )
@@ -278,8 +282,8 @@ def initial_state_static(model: SpineModel, base_accel_g0: float) -> tuple[np.nd
     f_base = -masses * (G0 + float(base_accel_g0) * G0)
 
     # Baseline k for discs (no rate effect needed for static)
-    k_disc = model.k0_elem_n_per_m.copy()
-    k_disc[0] = 0.0  # buttocks handled separately
+    k_comp = model.k0_elem_n_per_m.copy()
+    k_comp[0] = 0.0  # buttocks handled separately
 
     for _ in range(80):
         f_int, _elem, dfdy, _eps_raw, _x = _assemble_forces_and_tangent(
@@ -287,7 +291,7 @@ def initial_state_static(model: SpineModel, base_accel_g0: float) -> tuple[np.nd
             y,
             v,
             dv_dy_coeff=0.0,
-            k_disc_step=k_disc,
+            k_comp_step=k_comp,
         )
         r = f_int + f_base  # want r=0
         if float(np.linalg.norm(r)) < 1e-8:
@@ -357,9 +361,9 @@ def newmark_nonlinear(
     eps_smooth = np.zeros(ne, dtype=float)
     alpha = _alpha_lp(dt, float(model.strain_rate_smoothing_tau_s))
 
-    # Initial baseline disc stiffness (rate multiplier = 1 at eps_norm)
-    k_disc_step = model.k0_elem_n_per_m.copy()
-    k_disc_step[0] = 0.0
+    # Initial baseline disc stiffness (compression stiffness; tension handled separately)
+    k_comp_step = model.k0_elem_n_per_m.copy()
+    k_comp_step[0] = 0.0
 
     # Initial accel
     f_base0 = -masses * (G0 + base_accel_mps2[0])
@@ -368,11 +372,11 @@ def newmark_nonlinear(
         y[0],
         v[0],
         dv_dy_coeff=0.0,
-        k_disc_step=k_disc_step,
+        k_comp_step=k_comp_step,
     )
     elem_forces[0] = elem0
     eps_hist[0] = eps_raw0
-    k_hist[0] = k_disc_step
+    k_hist[0] = k_comp_step
     a[0] = np.linalg.solve(M, f_int0 + f_base0)
 
     for k in range(t.size - 1):
@@ -385,8 +389,8 @@ def newmark_nonlinear(
         # Newmark predictor
         y_guess = y_n + dt * v_n + (0.5 - beta) * dt * dt * a_n
 
-        # We'll freeze disc stiffness for this step after first iteration
-        k_disc_frozen = None
+        # We'll freeze disc compression stiffness for this step after first iteration
+        k_comp_frozen = None
         eps_smooth_step = eps_smooth.copy()
 
         elem_f_last = None
@@ -396,31 +400,31 @@ def newmark_nonlinear(
             a_guess = a0c * (y_guess - y_n) - a1c * v_n - a2c * a_n
             v_guess = v_n + dt * ((1.0 - gamma) * a_n + gamma * a_guess)
 
-            # Compute strain rate from current kinematics
+            # Compute strain rate from current kinematics (compression-only definition)
             eps_raw = np.zeros(ne, dtype=float)
             for e in range(1, n):
                 relv = float(v_guess[e] - v_guess[e - 1])
                 eps_raw[e] = _disc_strain_rate_per_s(model, relv)
 
             if it == 0:
-                # Update smoothing ONCE per timestep, then freeze k
+                # Update smoothing ONCE per timestep, then freeze compression stiffness
                 eps_smooth_step = eps_smooth + alpha * (eps_raw - eps_smooth)
 
-                # Build frozen k for discs based on smoothed eps
-                k_disc_frozen = model.k0_elem_n_per_m.copy()
-                k_disc_frozen[0] = 0.0
+                # Build frozen compression stiffness for discs based on smoothed eps
+                k_comp_frozen = model.k0_elem_n_per_m.copy()
+                k_comp_frozen[0] = 0.0
                 for e in range(1, ne):
                     s = _disc_k_multiplier(model, float(eps_smooth_step[e]))
-                    k_disc_frozen[e] = float(k_disc_frozen[e]) * float(s)
+                    k_comp_frozen[e] = float(k_comp_frozen[e]) * float(s)
 
-            assert k_disc_frozen is not None
+            assert k_comp_frozen is not None
 
             f_int, elem_f, dfdy, _eps_raw_eval, _x = _assemble_forces_and_tangent(
                 model,
                 y_guess,
                 v_guess,
                 dv_dy_coeff=dv_dy_coeff,
-                k_disc_step=k_disc_frozen,
+                k_comp_step=k_comp_frozen,
             )
             elem_f_last = elem_f
             eps_raw_last = eps_raw
@@ -457,7 +461,7 @@ def newmark_nonlinear(
         if eps_raw_last is None:
             eps_raw_last = np.zeros(ne, dtype=float)
         eps_hist[k + 1] = eps_raw_last
-        k_hist[k + 1] = k_disc_frozen if k_disc_frozen is not None else k_disc_step
+        k_hist[k + 1] = k_comp_frozen if k_comp_frozen is not None else k_comp_step
 
     return SimulationResult(
         time_s=t,

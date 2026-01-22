@@ -6,10 +6,11 @@ Shows T12L1 kN values (with peak G in brackets) across drop rates and jerk limit
 """
 
 import json
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import numpy as np
 from pathlib import Path
+
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 def load_data(json_path):
@@ -28,7 +29,7 @@ def load_data(json_path):
 
         result[(drop_rate, jerk_limit)] = {
             'kN': entry['peak_T12L1_kN'],
-            'peak_g': entry['base_accel_peak_g']
+            'peak_g': entry['base_accel_peak_g'],
         }
 
         # Capture bottom_out_compression_mm (same across all entries in a file)
@@ -91,40 +92,52 @@ def main():
     positions = []
 
     # Zone 1: Blue-green gradient (vmin to 8)
-    colors.extend([
-        (0.2, 0.4, 0.8),     # blue
-        (0.2, 0.7, 0.7),     # cyan
-        (0.3, 0.8, 0.4),     # green
-    ])
-    positions.extend([
-        0.0,
-        norm_caution * 0.5,
-        norm_caution,
-    ])
+    colors.extend(
+        [
+            (0.2, 0.4, 0.8),  # blue
+            (0.2, 0.7, 0.7),  # cyan
+            (0.3, 0.8, 0.4),  # green
+        ]
+    )
+    positions.extend(
+        [
+            0.0,
+            norm_caution * 0.5,
+            norm_caution,
+        ]
+    )
 
     # Zone 2: Yellow-orange gradient (8 to 10)
-    colors.extend([
-        (0.95, 0.9, 0.3),    # yellow
-        (0.95, 0.6, 0.2),    # orange
-    ])
-    positions.extend([
-        norm_caution + 0.001,
-        norm_danger,
-    ])
+    colors.extend(
+        [
+            (0.95, 0.9, 0.3),  # yellow
+            (0.95, 0.6, 0.2),  # orange
+        ]
+    )
+    positions.extend(
+        [
+            norm_caution + 0.001,
+            norm_danger,
+        ]
+    )
 
     # Zone 3: Red to crazy purple gradient (10 to vmax)
-    colors.extend([
-        (0.9, 0.2, 0.2),     # red
-        (0.7, 0.1, 0.3),     # dark red/crimson
-        (0.6, 0.1, 0.6),     # purple
-        (0.5, 0.0, 0.8),     # crazy purple/violet
-    ])
-    positions.extend([
-        norm_danger + 0.001,
-        norm_danger + (1.0 - norm_danger) * 0.33,
-        norm_danger + (1.0 - norm_danger) * 0.66,
-        1.0,
-    ])
+    colors.extend(
+        [
+            (0.9, 0.2, 0.2),  # red
+            (0.7, 0.1, 0.3),  # dark red/crimson
+            (0.6, 0.1, 0.6),  # purple
+            (0.5, 0.0, 0.8),  # crazy purple/violet
+        ]
+    )
+    positions.extend(
+        [
+            norm_danger + 0.001,
+            norm_danger + (1.0 - norm_danger) * 0.33,
+            norm_danger + (1.0 - norm_danger) * 0.66,
+            1.0,
+        ]
+    )
 
     cmap = mcolors.LinearSegmentedColormap.from_list('danger', list(zip(positions, colors)))
 
@@ -157,19 +170,28 @@ def main():
                         text_color = 'black'
                     else:
                         # Blue-green zone: white for darker blues, black for lighter greens
-                        norm_in_zone = (kn - vmin) / (threshold_caution - vmin) if threshold_caution > vmin else 0
+                        norm_in_zone = (
+                            (kn - vmin) / (threshold_caution - vmin)
+                            if threshold_caution > vmin
+                            else 0
+                        )
                         text_color = 'white' if norm_in_zone < 0.4 else 'black'
 
-                    ax.text(j, i, f'{kn:.2f}kN\n({peak_g:.0f}G)',
-                            ha='center', va='center', fontsize=9,
-                            color=text_color, fontweight='bold')
+                    ax.text(
+                        j,
+                        i,
+                        f'{kn:.2f}kN\n({peak_g:.0f}G)',
+                        ha='center',
+                        va='center',
+                        fontsize=9,
+                        color=text_color,
+                        fontweight='bold',
+                    )
                 else:
-                    ax.text(j, i, 'N/A', ha='center', va='center',
-                            fontsize=9, color='gray')
+                    ax.text(j, i, 'N/A', ha='center', va='center', fontsize=9, color='gray')
 
     # Plot both tables
-    plot_table(ax1, unlimited_matrix, unlimited_data,
-               'Buttock tissue\nno bottoming out limit')
+    plot_table(ax1, unlimited_matrix, unlimited_data, 'Buttock tissue\nno bottoming out limit')
 
     # Build title with bottom_out_compression from JSON
     if bottom_out_mm is not None:

@@ -103,9 +103,9 @@ def debug_find_disks(model_path: Path, geom_dir: Path | None) -> None:
     model = osim.Model(str(model_path))
     state = model.initSystem()
 
-    print('\n' + '='*60)
+    print('\n' + '=' * 60)
     print('DEBUG: Searching for intervertebral disks...')
-    print('='*60)
+    print('=' * 60)
 
     # Search in bodies
     bodies = model.getBodySet()
@@ -152,7 +152,12 @@ def debug_find_disks(model_path: Path, geom_dir: Path | None) -> None:
         name = forces.get(i).getName()
         force_type = type(forces.get(i)).__name__
         name_lower = name.lower()
-        if 'disk' in name_lower or 'disc' in name_lower or 'ivd' in name_lower or 'bushing' in name_lower:
+        if (
+            'disk' in name_lower
+            or 'disc' in name_lower
+            or 'ivd' in name_lower
+            or 'bushing' in name_lower
+        ):
             disk_forces.append((name, force_type))
     print('All force names:')
     for i in range(forces.getSize()):
@@ -175,7 +180,7 @@ def debug_find_disks(model_path: Path, geom_dir: Path | None) -> None:
         print('No constraints in model.')
 
     # Detailed inspection of IVD joints
-    print(f'\n--- IVD Joint Details ---')
+    print('\n--- IVD Joint Details ---')
     for i in range(joints.getSize()):
         j = joints.get(i)
         name = j.getName()
@@ -199,14 +204,16 @@ def debug_find_disks(model_path: Path, geom_dir: Path | None) -> None:
                 if cj:
                     # Get SpatialTransform
                     st = cj.getSpatialTransform()
-                    print(f'  SpatialTransform axes:')
+                    print('  SpatialTransform axes:')
                     for axis_idx in range(6):
                         axis = st.getTransformAxis(axis_idx)
                         coord_names = []
                         for ci in range(axis.getCoordinateNamesInArray().getSize()):
                             coord_names.append(axis.getCoordinateNamesInArray().get(ci))
                         func = axis.getFunction()
-                        print(f'    Axis {axis_idx}: coords={coord_names}, func={func.getConcreteClassName()}')
+                        print(
+                            f'    Axis {axis_idx}: coords={coord_names}, func={func.getConcreteClassName()}'
+                        )
 
                     # Get coordinates from the joint
                     num_coords = cj.numCoordinates()
@@ -214,14 +221,20 @@ def debug_find_disks(model_path: Path, geom_dir: Path | None) -> None:
                     for ci in range(num_coords):
                         coord = cj.get_coordinates(ci)
                         print(f'    - {coord.getName()}:')
-                        print(f'        default_value: {coord.getDefaultValue():.6f} rad ({coord.getDefaultValue() * 180/3.14159:.2f} deg)')
-                        print(f'        range: [{coord.getRangeMin():.4f}, {coord.getRangeMax():.4f}] rad')
-                        print(f'        clamped: {coord.get_clamped()}, locked: {coord.get_locked()}')
+                        print(
+                            f'        default_value: {coord.getDefaultValue():.6f} rad ({coord.getDefaultValue() * 180 / 3.14159:.2f} deg)'
+                        )
+                        print(
+                            f'        range: [{coord.getRangeMin():.4f}, {coord.getRangeMax():.4f}] rad'
+                        )
+                        print(
+                            f'        clamped: {coord.get_clamped()}, locked: {coord.get_locked()}'
+                        )
             except Exception as e:
                 print(f'  Error accessing CustomJoint: {e}')
 
     # Check if there are any BushingForce elements (would represent disk stiffness)
-    print(f'\n--- Searching for BushingForce (disk stiffness) ---')
+    print('\n--- Searching for BushingForce (disk stiffness) ---')
     bushing_count = 0
     for i in range(forces.getSize()):
         f = forces.get(i)
@@ -241,12 +254,14 @@ def debug_find_disks(model_path: Path, geom_dir: Path | None) -> None:
                 print(f'  Error: {e}')
 
     if bushing_count == 0:
-        print('No BushingForce elements found - IVD joints likely have NO passive stiffness modeled.')
+        print(
+            'No BushingForce elements found - IVD joints likely have NO passive stiffness modeled.'
+        )
         print('(Per paper: joints are pure ball joints, stiffness comes from muscles only)')
 
-    print('\n' + '='*60)
+    print('\n' + '=' * 60)
     print('DEBUG: End of disk search')
-    print('='*60 + '\n')
+    print('=' * 60 + '\n')
 
 
 if __name__ == '__main__':
@@ -256,7 +271,9 @@ if __name__ == '__main__':
     parser.add_argument('--model', required=True, type=Path, help='Path to .osim model')
     parser.add_argument('--geom', type=Path, default=None, help='Geometry directory (optional)')
     parser.add_argument('--out', required=True, type=Path, help='Output JSON path')
-    parser.add_argument('--debug-disks', action='store_true', help='Debug: search for intervertebral disks')
+    parser.add_argument(
+        '--debug-disks', action='store_true', help='Debug: search for intervertebral disks'
+    )
     args = parser.parse_args()
 
     if args.debug_disks:
