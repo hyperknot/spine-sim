@@ -258,14 +258,17 @@ def process_universal(output_dir):
             ax.text(-1.1, i + 0.5, filename.replace('.csv', ''),
                     ha='right', va='center', fontsize=8)
 
+        # Center of table in figure coordinates
+        table_center_x = ax_left + ax_width / 2
+
         # Title (two lines)
         left_label = 'unlimited' if bo_left == 'unlimited' else f'{bo_left} kN'
         right_label = 'unlimited' if bo_right == 'unlimited' else f'{bo_right} kN'
         title = f'Buttock bottoming out:\n{left_label} (left) | {right_label} (right)'
-        fig.text(0.5, 1 - 0.1 / fig_height, title, ha='center', va='top', fontsize=11, fontweight='bold')
+        fig.text(table_center_x, 1 - 0.1 / fig_height, title, ha='center', va='top', fontsize=11, fontweight='bold')
 
         # Bottom label
-        fig.text(0.5, 0.12 / fig_height, 'Buttock tissue stiffness (kN/m)', ha='center', fontsize=10)
+        fig.text(table_center_x, 0.12 / fig_height, 'Buttock tissue stiffness (kN/m)', ha='center', fontsize=10)
 
         # Remove all axes decorations
         for spine in ax.spines.values():
