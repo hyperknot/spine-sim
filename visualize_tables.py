@@ -88,7 +88,7 @@ def load_data(csv_path):
 
 def process_universal(output_dir):
     """Process all CSV files and create a universal comparison table."""
-    from matplotlib.gridspec import GridSpec
+    from matplotlib.patches import Rectangle
 
     batch_dirs = [d for d in output_dir.iterdir() if d.is_dir()]
     configs_info = []
@@ -145,8 +145,117 @@ def process_universal(output_dir):
 
     sorted_files = sorted(all_files, key=parse_filename)
     is_grid_mode = all(parse_filename(f)[0] == 0 for f in all_files)
+
+    # Grid mode requires multiple distinct drop rates (first value) to form a 2D grid
+    if is_grid_mode:
+        drop_rates = {parse_filename(f)[1] for f in all_files}
+        if len(drop_rates) <= 1:
+            is_grid_mode = False
+
     print(f"  Mode: {'Grid' if is_grid_mode else 'List'} ({len(sorted_files)} files)")
     n_rows = len(sorted_files)
+
+    # In list mode with exactly 2 groups, create a single merged table
+    if not is_grid_mode and len(groups) == 2:
+        # Get stiffness values (columns) - use first group's configs
+        stiffness_values = sorted({c[1] for c in configs_info})
+        n_cols = len(stiffness_values)
+
+        # Build lookup: (bottom_out, stiffness) -> config_name
+        config_lookup = {}
+        for name, stiffness, bottom_out, _ in configs_info:
+            config_lookup[(bottom_out, stiffness)] = name
+
+        # Add gaps between stiffness columns
+        gap_width = 0.3
+        fig_height = max(10, 2 + n_rows * 0.6)
+        fig_width = 4 + n_cols * 2.0 + (n_cols - 1) * gap_width
+
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+        # Calculate x positions with gaps between columns
+        x_positions = []
+        for j in range(n_cols):
+            x_positions.append(j + j * gap_width)
+
+        ax.set_xlim(-0.5, x_positions[-1] + 0.5)
+        ax.set_ylim(n_rows - 0.5, -0.5)
+
+        # Draw split cells with colored backgrounds
+        norm = plt.Normalize(vmin=VMIN, vmax=VMAX)
+        bo_left, bo_right = bottom_out_types[0], bottom_out_types[1]
+
+        for i, filename in enumerate(sorted_files):
+            for j, stiffness in enumerate(stiffness_values):
+                x = x_positions[j]
+
+                # Get values for both groups
+                left_config = config_lookup.get((bo_left, stiffness))
+                right_config = config_lookup.get((bo_right, stiffness))
+
+                left_val = None
+                right_val = None
+                if left_config and left_config in all_data and filename in all_data[left_config]:
+                    left_val = all_data[left_config][filename]['peak_T12L1_kN']
+                if right_config and right_config in all_data and filename in all_data[right_config]:
+                    right_val = all_data[right_config][filename]['peak_T12L1_kN']
+
+                # Draw left half
+                left_color = CMAP(norm(left_val)) if left_val is not None else (0.9, 0.9, 0.9, 1)
+                rect_left = Rectangle((x - 0.5, i - 0.5), 0.5, 1, facecolor=left_color, edgecolor='white', linewidth=0.5)
+                ax.add_patch(rect_left)
+
+                # Draw right half
+                right_color = CMAP(norm(right_val)) if right_val is not None else (0.9, 0.9, 0.9, 1)
+                rect_right = Rectangle((x, i - 0.5), 0.5, 1, facecolor=right_color, edgecolor='white', linewidth=0.5)
+                ax.add_patch(rect_right)
+
+                # Add text for left half
+                if left_val is not None:
+                    ax.text(x - 0.25, i, f'{left_val:.1f}', ha='center', va='center',
+                            fontsize=7, color=get_text_color(left_val), fontweight='bold')
+                else:
+                    ax.text(x - 0.25, i, 'N/A', ha='center', va='center', fontsize=7, color='gray')
+
+                # Add text for right half
+                if right_val is not None:
+                    ax.text(x + 0.25, i, f'{right_val:.1f}', ha='center', va='center',
+                            fontsize=7, color=get_text_color(right_val), fontweight='bold')
+                else:
+                    ax.text(x + 0.25, i, 'N/A', ha='center', va='center', fontsize=7, color='gray')
+
+        # Add stiffness labels below each column group (no ticks)
+        for j, stiffness in enumerate(stiffness_values):
+            ax.text(x_positions[j], n_rows - 0.5 + 0.3, str(stiffness),
+                    ha='center', va='top', fontsize=10)
+
+        # Add row labels to the left (no ticks)
+        for i, filename in enumerate(sorted_files):
+            ax.text(-0.6, i, filename.replace('.csv', ''),
+                    ha='right', va='center', fontsize=8)
+
+        ax.set_xlabel('Stiffness (kN/m)', fontsize=12)
+
+        # Title showing what left/right means
+        left_label = 'unlimited' if bo_left == 'unlimited' else f'{bo_left}kN'
+        right_label = 'unlimited' if bo_right == 'unlimited' else f'{bo_right}kN'
+        title = f'Buttock bottoming out: {left_label} (left) | {right_label} (right)'
+        ax.set_title(title, fontsize=11, fontweight='bold', pad=10)
+
+        # Remove all axes decorations (spines, ticks)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        output_path = output_dir / f'{output_dir.name}.png'
+        plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
+        print(f'Saved to: {output_path}')
+        plt.close()
+        return
+
+    # Original grid mode or fallback for non-2-group cases
+    from matplotlib.gridspec import GridSpec
 
     n_groups = len(groups)
     group_sizes = [len(g[1]) for g in groups]
