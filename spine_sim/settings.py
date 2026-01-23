@@ -86,7 +86,6 @@ def validate_config(cfg: dict) -> None:
     req_float(cfg, ['buttock', 'bottom_out_force_kN'])
     req_float(cfg, ['buttock', 'k2_n_per_m'])
 
-    req_float(cfg, ['spine', 'stiffness_scale'])
     req_float(cfg, ['spine', 'disc_height_mm'])
     req_float(cfg, ['spine', 'tension_k_mult'])
     req_float(cfg, ['spine', 'damping_ns_per_m'])

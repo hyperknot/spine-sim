@@ -24,7 +24,6 @@
     "k2_n_per_m": 5000000.0
   },
   "spine": {
-    "stiffness_scale": 1.0,
     "disc_height_mm": 11.3,
     "tension_k_mult": 0.1,
     "damping_ns_per_m": 1200.0,

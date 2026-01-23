@@ -12,10 +12,6 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
 
     Note: HEAD is OpenSim's lumped head/neck (incl. cervical) mass, optionally with helmet + recruited arms.
     """
-    stiffness_scale = float(req_float(config, ['spine', 'stiffness_scale']))
-    if stiffness_scale <= 0.0:
-        raise ValueError('spine.stiffness_scale must be > 0.')
-
     disc_height_mm = float(req_float(config, ['spine', 'disc_height_mm']))
     if disc_height_mm <= 0.0:
         raise ValueError('spine.disc_height_mm must be > 0.')
@@ -104,7 +100,7 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
     for i, ename in enumerate(element_names[1:], start=1):
         if ename not in k:
             raise KeyError(f'Missing baseline stiffness for element: {ename}')
-        k_elem[i] = float(k[ename]) * stiffness_scale
+        k_elem[i] = float(k[ename])
 
     c_elem = np.zeros(len(element_names), dtype=float)
     c_elem[0] = 0.0  # buttocks filled from config
