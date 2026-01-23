@@ -33,7 +33,11 @@ def process_input(
     dt = 1.0 / sample_rate
 
     accel_raw = np.asarray(series.values, dtype=float)
-    accel_filtered = np.asarray(cfc_filter(accel_raw.tolist(), sample_rate, cfc), dtype=float)
+    # Bypass CFC filter for high sample rates (19000 Hz or higher)
+    if sample_rate >= 19000:
+        accel_filtered = accel_raw.copy()
+    else:
+        accel_filtered = np.asarray(cfc_filter(accel_raw.tolist(), sample_rate, cfc), dtype=float)
     t_all = np.asarray(series.time_s, dtype=float)
 
     total_ms = float((t_all[-1] - t_all[0]) * 1000.0) if t_all.size >= 2 else 0.0
