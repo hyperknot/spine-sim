@@ -108,24 +108,30 @@ def process_universal(output_dir):
                 'base_accel_peak_g': float(entry['base_accel_peak_g']),
             }
 
-    # Sort files by (drop_rate, max_g, jerk)
+    # Sort files by (drop_rate, max_g, jerk) if grid format, otherwise alphabetically
     def parse_filename(f):
         parts = f.replace('.csv', '').split('-')
-        return (float(parts[0]), int(parts[1]), int(parts[2]))
+        try:
+            if len(parts) == 3:
+                return (0, float(parts[0]), int(parts[1]), int(parts[2]))
+        except ValueError:
+            pass
+        # Non-grid format: sort alphabetically
+        return (1, f, 0, 0)
 
     sorted_files = sorted(all_files, key=parse_filename)
+
+    # Detect if grid mode (all files match grid pattern)
+    is_grid_mode = all(parse_filename(f)[0] == 0 for f in all_files)
+    print(f"  Mode: {'Grid' if is_grid_mode else 'List'} ({len(sorted_files)} files)")
     n_rows = len(sorted_files)
 
     # Color scale settings
     threshold_caution = 8.0
     threshold_danger = 10.0
 
-    # Compute global vmin across all data
-    all_values = []
-    for config_name in all_data:
-        for filename in all_data[config_name]:
-            all_values.append(all_data[config_name][filename]['peak_T12L1_kN'])
-    vmin = min(all_values) if all_values else 0
+    # Fixed color scale range
+    vmin = 1.0
     vmax = 16.0
 
     # Build colormap
@@ -138,9 +144,9 @@ def process_universal(output_dir):
     positions = []
     colors.extend(
         [
-            (0.2, 0.4, 0.8),
-            (0.2, 0.7, 0.7),
-            (0.3, 0.8, 0.4),
+            (0.3, 0.8, 0.4),  # green
+            (0.2, 0.7, 0.7),  # cyan
+            (0.2, 0.4, 0.8),  # blue
         ]
     )
     positions.extend([0.0, norm_caution * 0.5, norm_caution])
@@ -154,9 +160,9 @@ def process_universal(output_dir):
     colors.extend(
         [
             (0.9, 0.2, 0.2),
-            (0.7, 0.1, 0.3),
-            (0.6, 0.1, 0.6),
-            (0.5, 0.0, 0.8),
+            (0.6, 0.1, 0.1),
+            (0.3, 0.05, 0.05),
+            (0.0, 0.0, 0.0),
         ]
     )
     positions.extend(
@@ -309,8 +315,8 @@ def process_csv(csv_path):
             if (dr, jl) in data:
                 matrix[i, j] = data[(dr, jl)]['kN']
 
-    # Fixed color scale: min from data, max fixed at 17
-    vmin = np.nanmin(matrix)
+    # Fixed color scale range
+    vmin = 1.0
     vmax = 16.0
 
     # Create figure with fixed size and layout
@@ -340,12 +346,12 @@ def process_csv(csv_path):
     colors = []
     positions = []
 
-    # Zone 1: Blue-green gradient (vmin to 8)
+    # Zone 1: Green-blue gradient (vmin to 8)
     colors.extend(
         [
-            (0.2, 0.4, 0.8),  # blue
-            (0.2, 0.7, 0.7),  # cyan
             (0.3, 0.8, 0.4),  # green
+            (0.2, 0.7, 0.7),  # cyan
+            (0.2, 0.4, 0.8),  # blue
         ]
     )
     positions.extend(
@@ -370,13 +376,13 @@ def process_csv(csv_path):
         ]
     )
 
-    # Zone 3: Red to crazy purple gradient (10 to vmax)
+    # Zone 3: Red to black gradient (10 to vmax)
     colors.extend(
         [
             (0.9, 0.2, 0.2),  # red
-            (0.7, 0.1, 0.3),  # dark red/crimson
-            (0.6, 0.1, 0.6),  # purple
-            (0.5, 0.0, 0.8),  # crazy purple/violet
+            (0.6, 0.1, 0.1),  # dark red
+            (0.3, 0.05, 0.05),  # very dark red
+            (0.0, 0.0, 0.0),  # black
         ]
     )
     positions.extend(
