@@ -44,6 +44,207 @@ def load_data(json_path):
     return result, bottom_out_force_kN, bottom_out_compression
 
 
+def process_universal(output_dir):
+    """Process all JSON files and create a universal comparison table.
+
+    Rows: input CSV files (impactrate-maxg-jerk.csv)
+    Columns: configs grouped by bottom-out type, with gaps between groups
+    """
+    # Discover all JSON files and parse their configs
+    json_files = list(output_dir.glob('*.json'))
+    configs_info = []  # [(config_name, stiffness, bottom_out), ...]
+
+    for jf in json_files:
+        name = jf.stem  # e.g., "85-unlimited" or "305-7"
+        parts = name.split('-')
+        if len(parts) == 2:
+            stiffness = int(parts[0])
+            bottom_out = parts[1]
+            configs_info.append((name, stiffness, bottom_out))
+
+    # Group by bottom_out type: "unlimited" first, then numeric values sorted
+    def bottom_out_sort_key(bo):
+        if bo == 'unlimited':
+            return (0, 0)
+        return (1, int(bo))
+
+    # Get unique bottom_out values, sorted
+    bottom_out_types = sorted(set(c[2] for c in configs_info), key=bottom_out_sort_key)
+
+    # Build groups: each group is a list of (config_name, stiffness) sorted by stiffness
+    groups = []
+    for bo in bottom_out_types:
+        group_configs = [(c[0], c[1]) for c in configs_info if c[2] == bo]
+        group_configs.sort(key=lambda x: x[1])  # sort by stiffness
+        groups.append((bo, group_configs))
+
+    # Load all data from all JSON files
+    all_data = {}  # config -> {filename -> entry}
+    all_files = set()
+
+    for config_name, _, _ in configs_info:
+        json_path = output_dir / f'{config_name}.json'
+        with open(json_path) as f:
+            data = json.load(f)
+
+        all_data[config_name] = {}
+        for entry in data:
+            filename = entry['file']
+            all_files.add(filename)
+            all_data[config_name][filename] = entry
+
+    # Sort files by (drop_rate, max_g, jerk)
+    def parse_filename(f):
+        parts = f.replace('.csv', '').split('-')
+        return (float(parts[0]), int(parts[1]), int(parts[2]))
+
+    sorted_files = sorted(all_files, key=parse_filename)
+    n_rows = len(sorted_files)
+
+    # Color scale settings
+    threshold_caution = 8.0
+    threshold_danger = 10.0
+
+    # Compute global vmin across all data
+    all_values = []
+    for config_name in all_data:
+        for filename in all_data[config_name]:
+            all_values.append(all_data[config_name][filename]['peak_T12L1_kN'])
+    vmin = min(all_values) if all_values else 0
+    vmax = 16.0
+
+    # Build colormap
+    norm_caution = (threshold_caution - vmin) / (vmax - vmin)
+    norm_danger = (threshold_danger - vmin) / (vmax - vmin)
+    norm_caution = max(0.0, min(1.0, norm_caution))
+    norm_danger = max(0.0, min(1.0, norm_danger))
+
+    colors = []
+    positions = []
+    colors.extend([
+        (0.2, 0.4, 0.8),
+        (0.2, 0.7, 0.7),
+        (0.3, 0.8, 0.4),
+    ])
+    positions.extend([0.0, norm_caution * 0.5, norm_caution])
+    colors.extend([
+        (0.95, 0.9, 0.3),
+        (0.95, 0.6, 0.2),
+    ])
+    positions.extend([norm_caution + 0.001, norm_danger])
+    colors.extend([
+        (0.9, 0.2, 0.2),
+        (0.7, 0.1, 0.3),
+        (0.6, 0.1, 0.6),
+        (0.5, 0.0, 0.8),
+    ])
+    positions.extend([
+        norm_danger + 0.001,
+        norm_danger + (1.0 - norm_danger) * 0.33,
+        norm_danger + (1.0 - norm_danger) * 0.66,
+        1.0,
+    ])
+    cmap = mcolors.LinearSegmentedColormap.from_list('danger', list(zip(positions, colors)))
+
+    # Create figure with gridspec for groups with gaps
+    n_groups = len(groups)
+    group_sizes = [len(g[1]) for g in groups]
+    total_cols = sum(group_sizes)
+
+    fig_height = max(10, 2 + n_rows * 0.6)
+    fig_width = 4 + total_cols * 1.5
+
+    # Width ratios: columns for each group, with small gaps between groups
+    width_ratios = []
+    for i, size in enumerate(group_sizes):
+        width_ratios.extend([1] * size)
+        if i < n_groups - 1:
+            width_ratios.append(0.3)  # gap
+
+    from matplotlib.gridspec import GridSpec
+    fig = plt.figure(figsize=(fig_width, fig_height))
+    gs = GridSpec(1, len(width_ratios), figure=fig, width_ratios=width_ratios,
+                  left=0.15, right=0.95, top=0.95, bottom=0.12, wspace=0.05)
+
+    # Track column index across groups
+    col_idx = 0
+    axes = []
+
+    for group_idx, (bo, group_configs) in enumerate(groups):
+        n_cols = len(group_configs)
+
+        # Create axis for this group
+        ax = fig.add_subplot(gs[0, col_idx:col_idx + n_cols])
+        axes.append(ax)
+
+        # Build matrix for this group
+        matrix = np.full((n_rows, n_cols), np.nan)
+        data_values = {}
+
+        for i, filename in enumerate(sorted_files):
+            for j, (config_name, stiffness) in enumerate(group_configs):
+                if config_name in all_data and filename in all_data[config_name]:
+                    entry = all_data[config_name][filename]
+                    matrix[i, j] = entry['peak_T12L1_kN']
+                    data_values[(i, j)] = {
+                        'kN': entry['peak_T12L1_kN'],
+                        'peak_g': entry['base_accel_peak_g'],
+                    }
+
+        # Create heatmap
+        im = ax.imshow(matrix, cmap=cmap, vmin=vmin, vmax=vmax, aspect='auto')
+
+        # Column labels
+        col_labels = [str(stiffness) for _, stiffness in group_configs]
+        ax.set_xticks(range(n_cols))
+        ax.set_xticklabels(col_labels, fontsize=10)
+
+        # Group title (same format as grid mode)
+        if bo == 'unlimited':
+            group_title = 'Buttock tissue\nno bottoming out limit'
+        else:
+            group_title = f'Buttock tissue\nbottoms out at {bo}kN'
+        ax.set_xlabel(group_title, fontsize=11, fontweight='bold')
+
+        # Row labels only on first group
+        if group_idx == 0:
+            row_labels = [f.replace('.csv', '') for f in sorted_files]
+            ax.set_yticks(range(n_rows))
+            ax.set_yticklabels(row_labels, fontsize=8)
+        else:
+            ax.set_yticks([])
+
+        # Add text annotations
+        for i in range(n_rows):
+            for j in range(n_cols):
+                if (i, j) in data_values:
+                    kn = data_values[(i, j)]['kN']
+
+                    if kn >= threshold_danger:
+                        text_color = 'white'
+                    elif kn >= threshold_caution:
+                        text_color = 'black'
+                    else:
+                        norm_in_zone = (kn - vmin) / (threshold_caution - vmin) if threshold_caution > vmin else 0
+                        text_color = 'white' if norm_in_zone < 0.4 else 'black'
+
+                    ax.text(j, i, f'{kn:.2f}', ha='center', va='center',
+                            fontsize=8, color=text_color, fontweight='bold')
+                else:
+                    ax.text(j, i, 'N/A', ha='center', va='center', fontsize=8, color='gray')
+
+        # Move to next group (skip gap column)
+        col_idx += n_cols
+        if group_idx < n_groups - 1:
+            col_idx += 1  # skip gap
+
+    # Save
+    output_path = output_dir / 'universal.png'
+    plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
+    print(f'Saved to: {output_path}')
+    plt.close()
+
+
 def process_json(json_path):
     """Process a single JSON file and generate a PNG."""
     # Output PNG with same base name
@@ -212,6 +413,8 @@ def process_json(json_path):
 
 
 def main():
+    import sys
+
     output_dir = Path(__file__).parent / 'output'
     json_files = sorted(output_dir.glob('*.json'))
 
@@ -219,8 +422,13 @@ def main():
         print(f'No JSON files found in {output_dir}')
         return
 
-    for json_path in json_files:
-        process_json(json_path)
+    if '--grid' in sys.argv:
+        # Original mode: generate individual tables per JSON
+        for json_path in json_files:
+            process_json(json_path)
+    else:
+        # Default: universal comparison table
+        process_universal(output_dir)
 
 
 if __name__ == '__main__':
