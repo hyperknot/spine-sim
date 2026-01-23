@@ -51,20 +51,23 @@ def process_universal(output_dir):
     Rows: input CSV files (impactrate-maxg-jerk.csv)
     Columns: configs grouped by bottom-out type, with gaps between groups
     """
-    # Discover all CSV files and parse their configs
-    csv_files = list(output_dir.glob('*.csv'))
-    configs_info = []  # [(config_name, stiffness, bottom_out), ...]
+    # Discover batch subfolders (e.g., 85-7, 85-unlimited, 305-7)
+    # Each subfolder contains a CSV with the same name as the folder
+    batch_dirs = [d for d in output_dir.iterdir() if d.is_dir()]
+    configs_info = []  # [(config_name, stiffness, bottom_out, csv_path), ...]
 
-    for cf in csv_files:
-        name = cf.stem  # e.g., "85-unlimited" or "305-7"
+    for batch_dir in batch_dirs:
+        name = batch_dir.name  # e.g., "85-unlimited" or "305-7"
         parts = name.split('-')
         if len(parts) == 2 and parts[0].isdigit():
             stiffness = int(parts[0])
             bottom_out = parts[1]
-            configs_info.append((name, stiffness, bottom_out))
+            csv_path = batch_dir / f'{name}.csv'
+            if csv_path.exists():
+                configs_info.append((name, stiffness, bottom_out, csv_path))
 
     if not configs_info:
-        print(f'  No batch config CSVs found (expected format: stiffness-bottomout.csv)')
+        print(f'  No batch config folders found (expected: subfolders like 85-7/, 305-unlimited/)')
         return
 
     # Group by bottom_out type: "unlimited" first, then numeric values sorted
@@ -83,12 +86,14 @@ def process_universal(output_dir):
         group_configs.sort(key=lambda x: x[1])  # sort by stiffness
         groups.append((bo, group_configs))
 
+    # Build a lookup from config_name to csv_path
+    config_to_csv = {c[0]: c[3] for c in configs_info}
+
     # Load all data from all CSV files
     all_data = {}  # config -> {filename -> entry}
     all_files = set()
 
-    for config_name, _, _ in configs_info:
-        csv_path = output_dir / f'{config_name}.csv'
+    for config_name, _, _, csv_path in configs_info:
         with open(csv_path, newline='', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             data = list(reader)
@@ -232,7 +237,7 @@ def process_universal(output_dir):
             group_title = 'Buttock tissue\nno bottoming out limit'
         else:
             group_title = f'Buttock tissue\nbottoms out at {bo}kN'
-        ax.set_xlabel(group_title, fontsize=11, fontweight='bold')
+        ax.set_title(group_title, fontsize=11, fontweight='bold')
 
         # Row labels only on first group
         if group_idx == 0:
@@ -279,7 +284,7 @@ def process_universal(output_dir):
             col_idx += 1  # skip gap
 
     # Save
-    output_path = output_dir / 'universal.png'
+    output_path = output_dir / f'{output_dir.name}.png'
     plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
     print(f'Saved to: {output_path}')
     plt.close()
@@ -471,10 +476,22 @@ def main():
         print(f'Processing: {subfolder.name}')
         print(f'{"=" * 60}')
 
-        csv_files = sorted(subfolder.glob('*.csv'))
+        # Find batch subfolders (e.g., 85-7, 305-unlimited)
+        batch_dirs = [d for d in subfolder.iterdir() if d.is_dir()]
+
+        if not batch_dirs:
+            print(f'  No batch folders found in {subfolder}')
+            continue
+
+        # Collect CSV files from batch subfolders
+        csv_files = []
+        for batch_dir in sorted(batch_dirs):
+            csv_path = batch_dir / f'{batch_dir.name}.csv'
+            if csv_path.exists():
+                csv_files.append(csv_path)
 
         if not csv_files:
-            print(f'  No CSV files found in {subfolder}')
+            print(f'  No CSV files found in batch folders')
             continue
 
         if '--grid' in sys.argv:

@@ -34,9 +34,10 @@ def main() -> None:
     if args.batch:
         for k1, c, stiff_label in BATCH_STIFFNESS_DAMPING:
             for force, force_label in BATCH_BOTTOM_OUT:
-                output_filename = f'{stiff_label}-{force_label}.csv'
+                batch_name = f'{stiff_label}-{force_label}'
+                output_filename = f'{batch_name}.csv'
                 print(f'\n{"=" * 60}')
-                print(f'BATCH: k1={k1}, c={c}, bottom_out={force} -> {output_filename}')
+                print(f'BATCH: k1={k1}, c={c}, bottom_out={force} -> {batch_name}/')
                 print(f'{"=" * 60}')
                 run_simulate_drop(
                     echo=print,
@@ -47,6 +48,7 @@ def main() -> None:
                     },
                     output_filename=output_filename,
                     subfolder=args.subfolder,
+                    output_subfolder=batch_name,
                 )
     else:
         run_simulate_drop(echo=print, subfolder=args.subfolder)

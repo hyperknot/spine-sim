@@ -70,6 +70,7 @@ def run_simulate_drop(
     buttock_override: dict | None = None,
     output_filename: str | None = None,
     subfolder: str | None = None,
+    output_subfolder: str | None = None,
 ) -> list[dict]:
     config = read_config()
 
@@ -133,6 +134,11 @@ def run_simulate_drop(
     else:
         inputs_dir = INPUT_BASE
         out_dir = OUTPUT_BASE
+
+    # In batch mode, put outputs in a subfolder named after the output file
+    if output_subfolder:
+        out_dir = out_dir / output_subfolder
+
     pattern = INPUT_PATTERN
 
     # Determine config filename (matches output CSV name)
