@@ -166,20 +166,36 @@ def process_universal(output_dir):
         for name, stiffness, bottom_out, _ in configs_info:
             config_lookup[(bottom_out, stiffness)] = name
 
-        # Add gaps between stiffness columns
-        gap_width = 0.3
-        fig_height = max(10, 2 + n_rows * 0.6)
-        fig_width = 4 + n_cols * 2.0 + (n_cols - 1) * gap_width
+        # Fixed dimensions (in inches)
+        cell_size = 0.55  # Each half-cell is square
+        gap_size = 0.25   # Gap between stiffness groups
+        left_margin = 1.5  # Fixed space for row labels
+        right_margin = 0.3
+        top_margin = 0.8   # Space for two-line title
+        bottom_margin = 0.5  # Space for stiffness label
+
+        # Calculate figure size
+        table_width = n_cols * (2 * cell_size) + (n_cols - 1) * gap_size
+        table_height = n_rows * cell_size
+        fig_width = left_margin + table_width + right_margin
+        fig_height = top_margin + table_height + bottom_margin
 
         fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
-        # Calculate x positions with gaps between columns
+        # Set axes position to match fixed margins
+        ax_left = left_margin / fig_width
+        ax_bottom = bottom_margin / fig_height
+        ax_width = table_width / fig_width
+        ax_height = table_height / fig_height
+        ax.set_position([ax_left, ax_bottom, ax_width, ax_height])
+
+        # Data coordinates: each column group is 2 units wide (1 per half), gaps between
         x_positions = []
         for j in range(n_cols):
-            x_positions.append(j + j * gap_width)
+            x_positions.append(j * (2 + gap_size / cell_size))
 
-        ax.set_xlim(-0.5, x_positions[-1] + 0.5)
-        ax.set_ylim(n_rows - 0.5, -0.5)
+        ax.set_xlim(-1, x_positions[-1] + 1)
+        ax.set_ylim(n_rows, 0)
 
         # Draw split cells with colored backgrounds
         norm = plt.Normalize(vmin=VMIN, vmax=VMAX)
@@ -193,60 +209,70 @@ def process_universal(output_dir):
                 left_config = config_lookup.get((bo_left, stiffness))
                 right_config = config_lookup.get((bo_right, stiffness))
 
-                left_val = None
-                right_val = None
+                left_kn, left_g = None, None
+                right_kn, right_g = None, None
                 if left_config and left_config in all_data and filename in all_data[left_config]:
-                    left_val = all_data[left_config][filename]['peak_T12L1_kN']
+                    left_kn = all_data[left_config][filename]['peak_T12L1_kN']
+                    left_g = all_data[left_config][filename]['base_accel_peak_g']
                 if right_config and right_config in all_data and filename in all_data[right_config]:
-                    right_val = all_data[right_config][filename]['peak_T12L1_kN']
+                    right_kn = all_data[right_config][filename]['peak_T12L1_kN']
+                    right_g = all_data[right_config][filename]['base_accel_peak_g']
 
-                # Draw left half
-                left_color = CMAP(norm(left_val)) if left_val is not None else (0.9, 0.9, 0.9, 1)
-                rect_left = Rectangle((x - 0.5, i - 0.5), 0.5, 1, facecolor=left_color, edgecolor='white', linewidth=0.5)
+                # Draw left half (square)
+                left_color = CMAP(norm(left_kn)) if left_kn is not None else (0.9, 0.9, 0.9, 1)
+                rect_left = Rectangle((x - 1, i), 1, 1, facecolor=left_color, edgecolor='white', linewidth=0.5)
                 ax.add_patch(rect_left)
 
-                # Draw right half
-                right_color = CMAP(norm(right_val)) if right_val is not None else (0.9, 0.9, 0.9, 1)
-                rect_right = Rectangle((x, i - 0.5), 0.5, 1, facecolor=right_color, edgecolor='white', linewidth=0.5)
+                # Draw right half (square)
+                right_color = CMAP(norm(right_kn)) if right_kn is not None else (0.9, 0.9, 0.9, 1)
+                rect_right = Rectangle((x, i), 1, 1, facecolor=right_color, edgecolor='white', linewidth=0.5)
                 ax.add_patch(rect_right)
 
-                # Add text for left half
-                if left_val is not None:
-                    ax.text(x - 0.25, i, f'{left_val:.1f}', ha='center', va='center',
-                            fontsize=7, color=get_text_color(left_val), fontweight='bold')
+                # Add text for left half: kN on line 1, (G) on line 2
+                if left_kn is not None:
+                    text_color = get_text_color(left_kn)
+                    ax.text(x - 0.5, i + 0.35, f'{left_kn:.1f} kN', ha='center', va='center',
+                            fontsize=7, color=text_color, fontweight='bold')
+                    ax.text(x - 0.5, i + 0.65, f'({left_g:.0f} G)', ha='center', va='center',
+                            fontsize=6, color=text_color)
                 else:
-                    ax.text(x - 0.25, i, 'N/A', ha='center', va='center', fontsize=7, color='gray')
+                    ax.text(x - 0.5, i + 0.5, 'N/A', ha='center', va='center', fontsize=7, color='gray')
 
-                # Add text for right half
-                if right_val is not None:
-                    ax.text(x + 0.25, i, f'{right_val:.1f}', ha='center', va='center',
-                            fontsize=7, color=get_text_color(right_val), fontweight='bold')
+                # Add text for right half: kN on line 1, (G) on line 2
+                if right_kn is not None:
+                    text_color = get_text_color(right_kn)
+                    ax.text(x + 0.5, i + 0.35, f'{right_kn:.1f} kN', ha='center', va='center',
+                            fontsize=7, color=text_color, fontweight='bold')
+                    ax.text(x + 0.5, i + 0.65, f'({right_g:.0f} G)', ha='center', va='center',
+                            fontsize=6, color=text_color)
                 else:
-                    ax.text(x + 0.25, i, 'N/A', ha='center', va='center', fontsize=7, color='gray')
+                    ax.text(x + 0.5, i + 0.5, 'N/A', ha='center', va='center', fontsize=7, color='gray')
 
-        # Add stiffness labels below each column group (no ticks)
+        # Add stiffness labels below each column group
         for j, stiffness in enumerate(stiffness_values):
-            ax.text(x_positions[j], n_rows - 0.5 + 0.3, str(stiffness),
+            ax.text(x_positions[j], n_rows + 0.15, str(stiffness),
                     ha='center', va='top', fontsize=10)
 
-        # Add row labels to the left (no ticks)
+        # Add row labels to the left
         for i, filename in enumerate(sorted_files):
-            ax.text(-0.6, i, filename.replace('.csv', ''),
+            ax.text(-1.1, i + 0.5, filename.replace('.csv', ''),
                     ha='right', va='center', fontsize=8)
 
-        ax.set_xlabel('Stiffness (kN/m)', fontsize=12)
+        # Title (two lines)
+        left_label = 'unlimited' if bo_left == 'unlimited' else f'{bo_left} kN'
+        right_label = 'unlimited' if bo_right == 'unlimited' else f'{bo_right} kN'
+        title = f'Buttock bottoming out:\n{left_label} (left) | {right_label} (right)'
+        fig.text(0.5, 1 - 0.1 / fig_height, title, ha='center', va='top', fontsize=11, fontweight='bold')
 
-        # Title showing what left/right means
-        left_label = 'unlimited' if bo_left == 'unlimited' else f'{bo_left}kN'
-        right_label = 'unlimited' if bo_right == 'unlimited' else f'{bo_right}kN'
-        title = f'Buttock bottoming out: {left_label} (left) | {right_label} (right)'
-        ax.set_title(title, fontsize=11, fontweight='bold', pad=10)
+        # Bottom label
+        fig.text(0.5, 0.12 / fig_height, 'Buttock tissue stiffness (kN/m)', ha='center', fontsize=10)
 
-        # Remove all axes decorations (spines, ticks)
+        # Remove all axes decorations
         for spine in ax.spines.values():
             spine.set_visible(False)
         ax.set_xticks([])
         ax.set_yticks([])
+        ax.set_aspect('equal')
 
         output_path = output_dir / f'{output_dir.name}.png'
         plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
