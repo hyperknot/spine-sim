@@ -121,29 +121,37 @@ def process_universal(output_dir):
 
     colors = []
     positions = []
-    colors.extend([
-        (0.2, 0.4, 0.8),
-        (0.2, 0.7, 0.7),
-        (0.3, 0.8, 0.4),
-    ])
+    colors.extend(
+        [
+            (0.2, 0.4, 0.8),
+            (0.2, 0.7, 0.7),
+            (0.3, 0.8, 0.4),
+        ]
+    )
     positions.extend([0.0, norm_caution * 0.5, norm_caution])
-    colors.extend([
-        (0.95, 0.9, 0.3),
-        (0.95, 0.6, 0.2),
-    ])
+    colors.extend(
+        [
+            (0.95, 0.9, 0.3),
+            (0.95, 0.6, 0.2),
+        ]
+    )
     positions.extend([norm_caution + 0.001, norm_danger])
-    colors.extend([
-        (0.9, 0.2, 0.2),
-        (0.7, 0.1, 0.3),
-        (0.6, 0.1, 0.6),
-        (0.5, 0.0, 0.8),
-    ])
-    positions.extend([
-        norm_danger + 0.001,
-        norm_danger + (1.0 - norm_danger) * 0.33,
-        norm_danger + (1.0 - norm_danger) * 0.66,
-        1.0,
-    ])
+    colors.extend(
+        [
+            (0.9, 0.2, 0.2),
+            (0.7, 0.1, 0.3),
+            (0.6, 0.1, 0.6),
+            (0.5, 0.0, 0.8),
+        ]
+    )
+    positions.extend(
+        [
+            norm_danger + 0.001,
+            norm_danger + (1.0 - norm_danger) * 0.33,
+            norm_danger + (1.0 - norm_danger) * 0.66,
+            1.0,
+        ]
+    )
     cmap = mcolors.LinearSegmentedColormap.from_list('danger', list(zip(positions, colors)))
 
     # Create figure with gridspec for groups with gaps
@@ -162,9 +170,19 @@ def process_universal(output_dir):
             width_ratios.append(0.3)  # gap
 
     from matplotlib.gridspec import GridSpec
+
     fig = plt.figure(figsize=(fig_width, fig_height))
-    gs = GridSpec(1, len(width_ratios), figure=fig, width_ratios=width_ratios,
-                  left=0.15, right=0.95, top=0.95, bottom=0.12, wspace=0.05)
+    gs = GridSpec(
+        1,
+        len(width_ratios),
+        figure=fig,
+        width_ratios=width_ratios,
+        left=0.15,
+        right=0.95,
+        top=0.95,
+        bottom=0.12,
+        wspace=0.05,
+    )
 
     # Track column index across groups
     col_idx = 0
@@ -174,7 +192,7 @@ def process_universal(output_dir):
         n_cols = len(group_configs)
 
         # Create axis for this group
-        ax = fig.add_subplot(gs[0, col_idx:col_idx + n_cols])
+        ax = fig.add_subplot(gs[0, col_idx : col_idx + n_cols])
         axes.append(ax)
 
         # Build matrix for this group
@@ -225,11 +243,23 @@ def process_universal(output_dir):
                     elif kn >= threshold_caution:
                         text_color = 'black'
                     else:
-                        norm_in_zone = (kn - vmin) / (threshold_caution - vmin) if threshold_caution > vmin else 0
+                        norm_in_zone = (
+                            (kn - vmin) / (threshold_caution - vmin)
+                            if threshold_caution > vmin
+                            else 0
+                        )
                         text_color = 'white' if norm_in_zone < 0.4 else 'black'
 
-                    ax.text(j, i, f'{kn:.2f}', ha='center', va='center',
-                            fontsize=8, color=text_color, fontweight='bold')
+                    ax.text(
+                        j,
+                        i,
+                        f'{kn:.2f}',
+                        ha='center',
+                        va='center',
+                        fontsize=8,
+                        color=text_color,
+                        fontweight='bold',
+                    )
                 else:
                     ax.text(j, i, 'N/A', ha='center', va='center', fontsize=8, color='gray')
 
@@ -387,9 +417,7 @@ def process_json(json_path):
                 else:
                     # Blue-green zone: white for darker blues, black for lighter greens
                     norm_in_zone = (
-                        (kn - vmin) / (threshold_caution - vmin)
-                        if threshold_caution > vmin
-                        else 0
+                        (kn - vmin) / (threshold_caution - vmin) if threshold_caution > vmin else 0
                     )
                     text_color = 'white' if norm_in_zone < 0.4 else 'black'
 
