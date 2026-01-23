@@ -54,7 +54,7 @@ def main() -> None:
     else:
         run_simulate_drop(echo=print, subfolder=args.subfolder)
 
-    subprocess.run(['./visualize_tables.py'])
+    subprocess.run(['./visualize_tables.py', args.subfolder])
 
 
 if __name__ == '__main__':

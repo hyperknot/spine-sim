@@ -464,8 +464,19 @@ def main():
         print(f'Output directory does not exist: {output_base}')
         return
 
-    # Find all subfolders in output/
-    subfolders = sorted([d for d in output_base.iterdir() if d.is_dir()])
+    # Check for a specific subfolder argument (excluding --grid flag)
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+
+    if args:
+        # Process only the specified subfolder
+        subfolder = output_base / args[0]
+        if not subfolder.exists():
+            print(f'Subfolder does not exist: {subfolder}')
+            return
+        subfolders = [subfolder]
+    else:
+        # Find all subfolders in output/
+        subfolders = sorted([d for d in output_base.iterdir() if d.is_dir()])
 
     if not subfolders:
         print(f'No subfolders found in {output_base}')
