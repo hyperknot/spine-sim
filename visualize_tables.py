@@ -69,7 +69,7 @@ def process_universal(output_dir):
         return (1, int(bo))
 
     # Get unique bottom_out values, sorted
-    bottom_out_types = sorted(set(c[2] for c in configs_info), key=bottom_out_sort_key)
+    bottom_out_types = sorted({c[2] for c in configs_info}, key=bottom_out_sort_key)
 
     # Build groups: each group is a list of (config_name, stiffness) sorted by stiffness
     groups = []
@@ -284,8 +284,8 @@ def process_json(json_path):
     data, bottom_out_force_kN, bottom_out_compression_mm = load_data(json_path)
 
     # Get all unique drop rates and jerk limits
-    drop_rates = sorted({k[0] for k in data.keys()})
-    jerk_limits = sorted({k[1] for k in data.keys()})
+    drop_rates = sorted({k[0] for k in data})
+    jerk_limits = sorted({k[1] for k in data})
 
     # Create matrix for the heatmap
     matrix = np.full((len(drop_rates), len(jerk_limits)), np.nan)
