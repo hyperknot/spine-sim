@@ -4,10 +4,10 @@
 Visualize spine simulation results as colored tables.
 Shows T12L1 kN values (with peak G in brackets) across drop rates and jerk limits.
 
-Processes all JSON files in the output/ folder and generates PNG images.
+Processes all CSV files in the output/ folder and generates PNG images.
 """
 
-import json
+import csv
 from pathlib import Path
 
 import matplotlib.colors as mcolors
@@ -15,10 +15,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def load_data(json_path):
-    """Load JSON and organize into a dict keyed by (drop_rate, jerk_limit)."""
-    with open(json_path) as f:
-        data = json.load(f)
+def load_data(csv_path):
+    """Load CSV and organize into a dict keyed by (drop_rate, jerk_limit)."""
+    with open(csv_path, newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        data = list(reader)
 
     result = {}
     bottom_out_force_kN = None
@@ -26,41 +27,45 @@ def load_data(json_path):
 
     for entry in data:
         # Parse filename: e.g., "1.0-10-1000.csv"
-        parts = entry['file'].replace('.csv', '').split('-')
+        parts = entry['filename'].replace('.csv', '').split('-')
         drop_rate = float(parts[0])
         jerk_limit = int(parts[2])
 
         result[(drop_rate, jerk_limit)] = {
-            'kN': entry['peak_T12L1_kN'],
-            'peak_g': entry['base_accel_peak_g'],
+            'kN': float(entry['peak_T12L1_kN']),
+            'peak_g': float(entry['base_accel_peak_g']),
         }
 
         # Capture bottom_out values from first entry
-        if bottom_out_force_kN is None and 'buttocks' in entry:
-            bottom_out_force_kN = entry['buttocks'].get('bottom_out_force_kN')
-        if bottom_out_compression is None and 'bottom_out_compression_mm' in entry:
-            bottom_out_compression = entry['bottom_out_compression_mm']
+        if bottom_out_force_kN is None and 'buttocks_bottom_out_force_kN' in entry:
+            bottom_out_force_kN = float(entry['buttocks_bottom_out_force_kN'])
+        if bottom_out_compression is None and 'buttocks_bottom_out_limit_mm' in entry:
+            bottom_out_compression = float(entry['buttocks_bottom_out_limit_mm'])
 
     return result, bottom_out_force_kN, bottom_out_compression
 
 
 def process_universal(output_dir):
-    """Process all JSON files and create a universal comparison table.
+    """Process all CSV files and create a universal comparison table.
 
     Rows: input CSV files (impactrate-maxg-jerk.csv)
     Columns: configs grouped by bottom-out type, with gaps between groups
     """
-    # Discover all JSON files and parse their configs
-    json_files = list(output_dir.glob('*.json'))
+    # Discover all CSV files and parse their configs
+    csv_files = list(output_dir.glob('*.csv'))
     configs_info = []  # [(config_name, stiffness, bottom_out), ...]
 
-    for jf in json_files:
-        name = jf.stem  # e.g., "85-unlimited" or "305-7"
+    for cf in csv_files:
+        name = cf.stem  # e.g., "85-unlimited" or "305-7"
         parts = name.split('-')
-        if len(parts) == 2:
+        if len(parts) == 2 and parts[0].isdigit():
             stiffness = int(parts[0])
             bottom_out = parts[1]
             configs_info.append((name, stiffness, bottom_out))
+
+    if not configs_info:
+        print(f'  No batch config CSVs found (expected format: stiffness-bottomout.csv)')
+        return
 
     # Group by bottom_out type: "unlimited" first, then numeric values sorted
     def bottom_out_sort_key(bo):
@@ -78,20 +83,25 @@ def process_universal(output_dir):
         group_configs.sort(key=lambda x: x[1])  # sort by stiffness
         groups.append((bo, group_configs))
 
-    # Load all data from all JSON files
+    # Load all data from all CSV files
     all_data = {}  # config -> {filename -> entry}
     all_files = set()
 
     for config_name, _, _ in configs_info:
-        json_path = output_dir / f'{config_name}.json'
-        with open(json_path) as f:
-            data = json.load(f)
+        csv_path = output_dir / f'{config_name}.csv'
+        with open(csv_path, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            data = list(reader)
 
         all_data[config_name] = {}
         for entry in data:
-            filename = entry['file']
+            filename = entry['filename']
             all_files.add(filename)
-            all_data[config_name][filename] = entry
+            # Convert string values to float for numeric fields
+            all_data[config_name][filename] = {
+                'peak_T12L1_kN': float(entry['peak_T12L1_kN']),
+                'base_accel_peak_g': float(entry['base_accel_peak_g']),
+            }
 
     # Sort files by (drop_rate, max_g, jerk)
     def parse_filename(f):
@@ -275,13 +285,13 @@ def process_universal(output_dir):
     plt.close()
 
 
-def process_json(json_path):
-    """Process a single JSON file and generate a PNG."""
+def process_csv(csv_path):
+    """Process a single CSV file and generate a PNG."""
     # Output PNG with same base name
-    output_path = json_path.with_suffix('.png')
+    output_path = csv_path.with_suffix('.png')
 
     # Load data
-    data, bottom_out_force_kN, bottom_out_compression_mm = load_data(json_path)
+    data, bottom_out_force_kN, bottom_out_compression_mm = load_data(csv_path)
 
     # Get all unique drop rates and jerk limits
     drop_rates = sorted({k[0] for k in data})
@@ -443,20 +453,37 @@ def process_json(json_path):
 def main():
     import sys
 
-    output_dir = Path(__file__).parent / 'output'
-    json_files = sorted(output_dir.glob('*.json'))
+    output_base = Path(__file__).parent / 'output'
 
-    if not json_files:
-        print(f'No JSON files found in {output_dir}')
+    if not output_base.exists():
+        print(f'Output directory does not exist: {output_base}')
         return
 
-    if '--grid' in sys.argv:
-        # Original mode: generate individual tables per JSON
-        for json_path in json_files:
-            process_json(json_path)
-    else:
-        # Default: universal comparison table
-        process_universal(output_dir)
+    # Find all subfolders in output/
+    subfolders = sorted([d for d in output_base.iterdir() if d.is_dir()])
+
+    if not subfolders:
+        print(f'No subfolders found in {output_base}')
+        return
+
+    for subfolder in subfolders:
+        print(f'\n{"=" * 60}')
+        print(f'Processing: {subfolder.name}')
+        print(f'{"=" * 60}')
+
+        csv_files = sorted(subfolder.glob('*.csv'))
+
+        if not csv_files:
+            print(f'  No CSV files found in {subfolder}')
+            continue
+
+        if '--grid' in sys.argv:
+            # Original mode: generate individual tables per CSV
+            for csv_path in csv_files:
+                process_csv(csv_path)
+        else:
+            # Default: universal comparison table
+            process_universal(subfolder)
 
 
 if __name__ == '__main__':

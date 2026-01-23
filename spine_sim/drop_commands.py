@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import shutil
 from pathlib import Path
@@ -30,10 +31,10 @@ from spine_sim.settings import (
 )
 
 
-# Hard-coded IO
-INPUTS_DIR = REPO_ROOT / 'drops'
+# Default IO
+INPUT_BASE = REPO_ROOT / 'input'
 INPUT_PATTERN = '*.csv'
-OUTPUT_DIR = REPO_ROOT / 'output'
+OUTPUT_BASE = REPO_ROOT / 'output'
 
 
 def _get_plotting_config(config: dict) -> tuple[float, dict | None]:
@@ -68,6 +69,7 @@ def run_simulate_drop(
     echo=print,
     buttock_override: dict | None = None,
     output_filename: str | None = None,
+    subfolder: str | None = None,
 ) -> list[dict]:
     config = read_config()
 
@@ -125,15 +127,41 @@ def run_simulate_drop(
 
     buttocks_height_mm, heights_from_model = _get_plotting_config(config)
 
-    inputs_dir = INPUTS_DIR
+    if subfolder:
+        inputs_dir = INPUT_BASE / subfolder
+        out_dir = OUTPUT_BASE / subfolder
+    else:
+        inputs_dir = INPUT_BASE
+        out_dir = OUTPUT_BASE
     pattern = INPUT_PATTERN
-    out_dir = OUTPUT_DIR
+
+    # Determine config filename (matches output CSV name)
+    config_basename = (output_filename.replace('.csv', '.json') if output_filename else 'config.json')
+    out_config_path = out_dir / config_basename
+
+    # Check if output already exists with same config
+    if out_config_path.exists():
+        with open(out_config_path, encoding='utf-8') as f:
+            existing_config = json.load(f)
+        if existing_config == config:
+            echo(f'Skipping {subfolder or "output"}/{config_basename}: config unchanged')
+            return []
+        # Config changed - remove old output files for this specific config
+        echo(f'Config changed for {config_basename}, removing old outputs')
+        csv_path = out_dir / (output_filename or 'summary.csv')
+        if csv_path.exists():
+            csv_path.unlink()
+        out_config_path.unlink()
 
     files = sorted(inputs_dir.glob(pattern))
     if not files:
         raise FileNotFoundError(f'No drop inputs found: {inputs_dir}/{pattern}')
 
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save config to output folder
+    with open(out_config_path, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
 
     summary: list[dict] = []
 
@@ -326,38 +354,36 @@ def run_simulate_drop(
 
         summary.append(
             {
-                'file': fpath.name,
-                'style': info['style'],
-                'input_sample_rate_hz': info['sample_rate_hz'],
-                'internal_solver_rate_hz': 1.0 / dt_internal_s,
+                'filename': fpath.name,
                 'base_accel_peak_g': peak_base_g,
-                'base_accel_min_g': min_base_g,
-                'peak_buttocks_kN': peak_butt_kN,
                 'peak_T12L1_kN': peak_t12_kN,
-                'time_to_peak_ms': t_peak_ms,
-                'max_spine_shortening_mm': max_spine_shortening_mm,
-                'bottom_out_compression_mm': round(x0_mm, 3),
-                'buttocks': {
-                    'k1_n_per_m': model.buttocks_k1_n_per_m,
-                    'k2_n_per_m': model.buttocks_k2_n_per_m,
-                    'c_ns_per_m': model.buttocks_c_ns_per_m,
-                    'bottom_out_force_kN': model.buttocks_bottom_out_force_n / 1000.0,
-                    'implied_bottom_out_compression_mm': x0_mm,
-                    'max_compression_mm': butt_comp_max_mm,
-                    'bottomed_out': bool(butt_bottomed_out),
-                    'compression_overshoot_mm': float(max(0.0, butt_comp_max_mm - x0_mm))
-                    if model.buttocks_bottom_out_force_n > 0.0
-                    else 0.0,
-                },
-                'strain_rate': {
-                    'warn_over_eps_per_s': warn_threshold,
-                    'max_eps_any_per_s': eps_smooth_max,
-                    'fraction_samples_over_warn': frac_over,
-                },
+                'time_to_peak_T12L1_ms': t_peak_ms,
+                'peak_buttocks_kN': peak_butt_kN,
+                'buttocks_k1_n_per_m': model.buttocks_k1_n_per_m,
+                'buttocks_bottom_out_force_kN': model.buttocks_bottom_out_force_n / 1000.0,
+                'buttocks_bottom_out_limit_mm': round(x0_mm, 3),
+                'buttocks_max_compression_reached_mm': butt_comp_max_mm,
+                'buttocks_bottomed_out': butt_bottomed_out,
             }
         )
 
-    summary_filename = output_filename or 'summary.json'
-    (out_dir / summary_filename).write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
-    echo(f'\nResults written to {out_dir}/{summary_filename}')
+    summary_filename = output_filename or 'summary.csv'
+    summary_path = out_dir / summary_filename
+    fieldnames = [
+        'filename',
+        'base_accel_peak_g',
+        'peak_T12L1_kN',
+        'time_to_peak_T12L1_ms',
+        'peak_buttocks_kN',
+        'buttocks_k1_n_per_m',
+        'buttocks_bottom_out_force_kN',
+        'buttocks_bottom_out_limit_mm',
+        'buttocks_max_compression_reached_mm',
+        'buttocks_bottomed_out',
+    ]
+    with open(summary_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(summary)
+    echo(f'\nResults written to {summary_path}')
     return summary

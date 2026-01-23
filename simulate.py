@@ -21,6 +21,10 @@ BATCH_BOTTOM_OUT = [
 def main() -> None:
     parser = argparse.ArgumentParser(description='Run spine drop simulation')
     parser.add_argument(
+        'subfolder',
+        help='Subfolder in input/ to process (outputs to output/<subfolder>)',
+    )
+    parser.add_argument(
         '--batch',
         action='store_true',
         help='Run batch mode with all buttock parameter combinations',
@@ -30,7 +34,7 @@ def main() -> None:
     if args.batch:
         for k1, c, stiff_label in BATCH_STIFFNESS_DAMPING:
             for force, force_label in BATCH_BOTTOM_OUT:
-                output_filename = f'{stiff_label}-{force_label}.json'
+                output_filename = f'{stiff_label}-{force_label}.csv'
                 print(f'\n{"=" * 60}')
                 print(f'BATCH: k1={k1}, c={c}, bottom_out={force} -> {output_filename}')
                 print(f'{"=" * 60}')
@@ -42,9 +46,10 @@ def main() -> None:
                         'bottom_out_force_kN': force,
                     },
                     output_filename=output_filename,
+                    subfolder=args.subfolder,
                 )
     else:
-        run_simulate_drop(echo=print)
+        run_simulate_drop(echo=print, subfolder=args.subfolder)
 
 
 if __name__ == '__main__':
