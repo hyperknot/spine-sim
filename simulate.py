@@ -1,6 +1,7 @@
 #!/usr/bin/env -S uv run
 
 import argparse
+import subprocess
 
 from spine_sim.drop_commands import run_simulate_drop
 
@@ -52,6 +53,8 @@ def main() -> None:
                 )
     else:
         run_simulate_drop(echo=print, subfolder=args.subfolder)
+
+    subprocess.run(['./visualize_tables.py'])
 
 
 if __name__ == '__main__':

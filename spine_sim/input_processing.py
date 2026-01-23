@@ -34,7 +34,7 @@ def process_input(
 
     accel_raw = np.asarray(series.values, dtype=float)
     # Bypass CFC filter for high sample rates (19000 Hz or higher)
-    if sample_rate >= 19000:
+    if sample_rate >= 9900:
         accel_filtered = accel_raw.copy()
     else:
         accel_filtered = np.asarray(cfc_filter(accel_raw.tolist(), sample_rate, cfc), dtype=float)
