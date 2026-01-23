@@ -145,16 +145,16 @@ def run_simulate_drop(
     config_basename = (output_filename.replace('.csv', '.json') if output_filename else 'config.json')
     out_config_path = out_dir / config_basename
 
-    # Check if output already exists with same config
+    # Check if output already exists with same config AND csv exists
+    csv_path = out_dir / (output_filename or 'summary.csv')
     if out_config_path.exists():
         with open(out_config_path, encoding='utf-8') as f:
             existing_config = json.load(f)
-        if existing_config == config:
-            echo(f'Skipping {subfolder or "output"}/{config_basename}: config unchanged')
+        if existing_config == config and csv_path.exists():
+            echo(f'Skipping {subfolder or "output"}/{config_basename}: config unchanged and csv exists')
             return []
-        # Config changed - remove old output files for this specific config
-        echo(f'Config changed for {config_basename}, removing old outputs')
-        csv_path = out_dir / (output_filename or 'summary.csv')
+        # Config changed OR csv missing - remove old output files and regenerate
+        echo(f'Config changed or csv missing for {config_basename}, regenerating')
         if csv_path.exists():
             csv_path.unlink()
         out_config_path.unlink()
