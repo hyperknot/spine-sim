@@ -14,6 +14,49 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Color scale constants
+VMIN = 2.0
+VMAX = 14.0
+
+
+def create_colormap():
+    """Create smooth rainbow-like colormap for spine force visualization.
+
+    Progression: deep blue → blue → cyan → teal → green → yellow → orange
+    Then above 10 kN: red → magenta → purple → dark purple
+    """
+    def kn_to_norm(kn):
+        return (kn - VMIN) / (VMAX - VMIN)
+
+    colors = [
+        (0.18, 0.20, 0.58),  # 2 kN: Deep indigo-blue
+        (0.20, 0.36, 0.72),  # 3 kN: Rich blue
+        (0.16, 0.50, 0.72),  # 4 kN: Blue-cyan
+        (0.12, 0.62, 0.67),  # 5 kN: Cyan-teal
+        (0.20, 0.68, 0.48),  # 6 kN: Teal-green
+        (0.70, 0.80, 0.28),  # 7 kN: Yellow-green
+        (0.92, 0.70, 0.20),  # 8 kN: Orange-yellow
+        (0.92, 0.45, 0.18),  # 9 kN: Orange
+        (0.90, 0.22, 0.18),  # 10 kN: True red
+        (0.82, 0.18, 0.45),  # 11 kN: Red-magenta
+        (0.65, 0.12, 0.55),  # 12 kN: Magenta-purple
+        (0.45, 0.08, 0.50),  # 13 kN: Purple
+        (0.30, 0.05, 0.40),  # 14 kN: Dark purple
+    ]
+    positions = [kn_to_norm(kn) for kn in range(2, 15)]
+    return mcolors.LinearSegmentedColormap.from_list('spine_rainbow', list(zip(positions, colors)))
+
+
+def get_text_color(kn):
+    """Return text color (white/black) based on background brightness."""
+    if kn <= 4.0 or kn >= 10.0:
+        return 'white'
+    return 'black'
+
+
+# Shared colormap instance
+CMAP = create_colormap()
+
 
 def load_data(csv_path):
     """Load CSV and organize into a dict keyed by (drop_rate, jerk_limit)."""
@@ -26,7 +69,6 @@ def load_data(csv_path):
     bottom_out_compression = None
 
     for entry in data:
-        # Parse filename: e.g., "1.0-10-1000.csv"
         parts = entry['filename'].replace('.csv', '').split('-')
         drop_rate = float(parts[0])
         jerk_limit = int(parts[2])
@@ -36,7 +78,6 @@ def load_data(csv_path):
             'peak_g': float(entry['base_accel_peak_g']),
         }
 
-        # Capture bottom_out values from first entry
         if bottom_out_force_kN is None and 'buttocks_bottom_out_force_kN' in entry:
             bottom_out_force_kN = float(entry['buttocks_bottom_out_force_kN'])
         if bottom_out_compression is None and 'buttocks_bottom_out_limit_mm' in entry:
@@ -46,18 +87,14 @@ def load_data(csv_path):
 
 
 def process_universal(output_dir):
-    """Process all CSV files and create a universal comparison table.
+    """Process all CSV files and create a universal comparison table."""
+    from matplotlib.gridspec import GridSpec
 
-    Rows: input CSV files (impactrate-maxg-jerk.csv)
-    Columns: configs grouped by bottom-out type, with gaps between groups
-    """
-    # Discover batch subfolders (e.g., 85-7, 85-unlimited, 305-7)
-    # Each subfolder contains a CSV with the same name as the folder
     batch_dirs = [d for d in output_dir.iterdir() if d.is_dir()]
-    configs_info = []  # [(config_name, stiffness, bottom_out, csv_path), ...]
+    configs_info = []
 
     for batch_dir in batch_dirs:
-        name = batch_dir.name  # e.g., "85-unlimited" or "305-7"
+        name = batch_dir.name
         parts = name.split('-')
         if len(parts) == 2 and parts[0].isdigit():
             stiffness = int(parts[0])
@@ -67,30 +104,20 @@ def process_universal(output_dir):
                 configs_info.append((name, stiffness, bottom_out, csv_path))
 
     if not configs_info:
-        print(f'  No batch config folders found (expected: subfolders like 85-7/, 305-unlimited/)')
+        print('  No batch config folders found')
         return
 
-    # Group by bottom_out type: "unlimited" first, then numeric values sorted
     def bottom_out_sort_key(bo):
-        if bo == 'unlimited':
-            return (0, 0)
-        return (1, int(bo))
+        return (0, 0) if bo == 'unlimited' else (1, int(bo))
 
-    # Get unique bottom_out values, sorted
     bottom_out_types = sorted({c[2] for c in configs_info}, key=bottom_out_sort_key)
 
-    # Build groups: each group is a list of (config_name, stiffness) sorted by stiffness
     groups = []
     for bo in bottom_out_types:
-        group_configs = [(c[0], c[1]) for c in configs_info if c[2] == bo]
-        group_configs.sort(key=lambda x: x[1])  # sort by stiffness
+        group_configs = sorted([(c[0], c[1]) for c in configs_info if c[2] == bo], key=lambda x: x[1])
         groups.append((bo, group_configs))
 
-    # Build a lookup from config_name to csv_path
-    config_to_csv = {c[0]: c[3] for c in configs_info}
-
-    # Load all data from all CSV files
-    all_data = {}  # config -> {filename -> entry}
+    all_data = {}
     all_files = set()
 
     for config_name, _, _, csv_path in configs_info:
@@ -102,13 +129,11 @@ def process_universal(output_dir):
         for entry in data:
             filename = entry['filename']
             all_files.add(filename)
-            # Convert string values to float for numeric fields
             all_data[config_name][filename] = {
                 'peak_T12L1_kN': float(entry['peak_T12L1_kN']),
                 'base_accel_peak_g': float(entry['base_accel_peak_g']),
             }
 
-    # Sort files by (drop_rate, max_g, jerk) if grid format, otherwise alphabetically
     def parse_filename(f):
         parts = f.replace('.csv', '').split('-')
         try:
@@ -116,66 +141,13 @@ def process_universal(output_dir):
                 return (0, float(parts[0]), int(parts[1]), int(parts[2]))
         except ValueError:
             pass
-        # Non-grid format: sort alphabetically
         return (1, f, 0, 0)
 
     sorted_files = sorted(all_files, key=parse_filename)
-
-    # Detect if grid mode (all files match grid pattern)
     is_grid_mode = all(parse_filename(f)[0] == 0 for f in all_files)
     print(f"  Mode: {'Grid' if is_grid_mode else 'List'} ({len(sorted_files)} files)")
     n_rows = len(sorted_files)
 
-    # Color scale settings
-    threshold_caution = 8.0
-    threshold_danger = 10.0
-
-    # Fixed color scale range
-    vmin = 1.0
-    vmax = 16.0
-
-    # Build colormap
-    norm_caution = (threshold_caution - vmin) / (vmax - vmin)
-    norm_danger = (threshold_danger - vmin) / (vmax - vmin)
-    norm_caution = max(0.0, min(1.0, norm_caution))
-    norm_danger = max(0.0, min(1.0, norm_danger))
-
-    colors = []
-    positions = []
-    colors.extend(
-        [
-            (0.3, 0.8, 0.4),  # green
-            (0.2, 0.7, 0.7),  # cyan
-            (0.2, 0.4, 0.8),  # blue
-        ]
-    )
-    positions.extend([0.0, norm_caution * 0.5, norm_caution])
-    colors.extend(
-        [
-            (0.95, 0.9, 0.3),
-            (0.95, 0.6, 0.2),
-        ]
-    )
-    positions.extend([norm_caution + 0.001, norm_danger])
-    colors.extend(
-        [
-            (0.9, 0.2, 0.2),
-            (0.6, 0.1, 0.1),
-            (0.3, 0.05, 0.05),
-            (0.0, 0.0, 0.0),
-        ]
-    )
-    positions.extend(
-        [
-            norm_danger + 0.001,
-            norm_danger + (1.0 - norm_danger) * 0.33,
-            norm_danger + (1.0 - norm_danger) * 0.66,
-            1.0,
-        ]
-    )
-    cmap = mcolors.LinearSegmentedColormap.from_list('danger', list(zip(positions, colors)))
-
-    # Create figure with gridspec for groups with gaps
     n_groups = len(groups)
     group_sizes = [len(g[1]) for g in groups]
     total_cols = sum(group_sizes)
@@ -183,113 +155,57 @@ def process_universal(output_dir):
     fig_height = max(10, 2 + n_rows * 0.6)
     fig_width = 4 + total_cols * 1.5
 
-    # Width ratios: columns for each group, with small gaps between groups
     width_ratios = []
     for i, size in enumerate(group_sizes):
         width_ratios.extend([1] * size)
         if i < n_groups - 1:
-            width_ratios.append(0.3)  # gap
-
-    from matplotlib.gridspec import GridSpec
+            width_ratios.append(0.3)
 
     fig = plt.figure(figsize=(fig_width, fig_height))
-    gs = GridSpec(
-        1,
-        len(width_ratios),
-        figure=fig,
-        width_ratios=width_ratios,
-        left=0.15,
-        right=0.95,
-        top=0.95,
-        bottom=0.12,
-        wspace=0.05,
-    )
+    gs = GridSpec(1, len(width_ratios), figure=fig, width_ratios=width_ratios,
+                  left=0.15, right=0.95, top=0.95, bottom=0.12, wspace=0.05)
 
-    # Track column index across groups
     col_idx = 0
-    axes = []
 
     for group_idx, (bo, group_configs) in enumerate(groups):
         n_cols = len(group_configs)
+        ax = fig.add_subplot(gs[0, col_idx:col_idx + n_cols])
 
-        # Create axis for this group
-        ax = fig.add_subplot(gs[0, col_idx : col_idx + n_cols])
-        axes.append(ax)
-
-        # Build matrix for this group
         matrix = np.full((n_rows, n_cols), np.nan)
         data_values = {}
 
         for i, filename in enumerate(sorted_files):
-            for j, (config_name, stiffness) in enumerate(group_configs):
+            for j, (config_name, _) in enumerate(group_configs):
                 if config_name in all_data and filename in all_data[config_name]:
                     entry = all_data[config_name][filename]
                     matrix[i, j] = entry['peak_T12L1_kN']
-                    data_values[(i, j)] = {
-                        'kN': entry['peak_T12L1_kN'],
-                        'peak_g': entry['base_accel_peak_g'],
-                    }
+                    data_values[(i, j)] = entry['peak_T12L1_kN']
 
-        # Create heatmap
-        im = ax.imshow(matrix, cmap=cmap, vmin=vmin, vmax=vmax, aspect='auto')
+        ax.imshow(matrix, cmap=CMAP, vmin=VMIN, vmax=VMAX, aspect='auto')
 
-        # Column labels
-        col_labels = [str(stiffness) for _, stiffness in group_configs]
         ax.set_xticks(range(n_cols))
-        ax.set_xticklabels(col_labels, fontsize=10)
+        ax.set_xticklabels([str(stiffness) for _, stiffness in group_configs], fontsize=10)
 
-        # Group title (same format as grid mode)
-        if bo == 'unlimited':
-            group_title = 'Buttock tissue\nno bottoming out limit'
-        else:
-            group_title = f'Buttock tissue\nbottoms out at {bo}kN'
+        group_title = 'Buttock tissue\nno bottoming out limit' if bo == 'unlimited' else f'Buttock tissue\nbottoms out at {bo}kN'
         ax.set_title(group_title, fontsize=11, fontweight='bold')
 
-        # Row labels only on first group
         if group_idx == 0:
-            row_labels = [f.replace('.csv', '') for f in sorted_files]
             ax.set_yticks(range(n_rows))
-            ax.set_yticklabels(row_labels, fontsize=8)
+            ax.set_yticklabels([f.replace('.csv', '') for f in sorted_files], fontsize=8)
         else:
             ax.set_yticks([])
 
-        # Add text annotations
         for i in range(n_rows):
             for j in range(n_cols):
                 if (i, j) in data_values:
-                    kn = data_values[(i, j)]['kN']
-
-                    if kn >= threshold_danger:
-                        text_color = 'white'
-                    elif kn >= threshold_caution:
-                        text_color = 'black'
-                    else:
-                        norm_in_zone = (
-                            (kn - vmin) / (threshold_caution - vmin)
-                            if threshold_caution > vmin
-                            else 0
-                        )
-                        text_color = 'white' if norm_in_zone < 0.4 else 'black'
-
-                    ax.text(
-                        j,
-                        i,
-                        f'{kn:.2f}',
-                        ha='center',
-                        va='center',
-                        fontsize=8,
-                        color=text_color,
-                        fontweight='bold',
-                    )
+                    kn = data_values[(i, j)]
+                    ax.text(j, i, f'{kn:.2f}', ha='center', va='center',
+                            fontsize=8, color=get_text_color(kn), fontweight='bold')
                 else:
                     ax.text(j, i, 'N/A', ha='center', va='center', fontsize=8, color='gray')
 
-        # Move to next group (skip gap column)
-        col_idx += n_cols
-        if group_idx < n_groups - 1:
-            col_idx += 1  # skip gap
+        col_idx += n_cols + (1 if group_idx < n_groups - 1 else 0)
 
-    # Save
     output_path = output_dir / f'{output_dir.name}.png'
     plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
     print(f'Saved to: {output_path}')
@@ -298,118 +214,30 @@ def process_universal(output_dir):
 
 def process_csv(csv_path):
     """Process a single CSV file and generate a PNG."""
-    # Output PNG with same base name
     output_path = csv_path.with_suffix('.png')
-
-    # Load data
     data, bottom_out_force_kN, bottom_out_compression_mm = load_data(csv_path)
 
-    # Get all unique drop rates and jerk limits
     drop_rates = sorted({k[0] for k in data})
     jerk_limits = sorted({k[1] for k in data})
 
-    # Create matrix for the heatmap
     matrix = np.full((len(drop_rates), len(jerk_limits)), np.nan)
     for i, dr in enumerate(drop_rates):
         for j, jl in enumerate(jerk_limits):
             if (dr, jl) in data:
                 matrix[i, j] = data[(dr, jl)]['kN']
 
-    # Fixed color scale range
-    vmin = 1.0
-    vmax = 16.0
-
-    # Create figure with fixed size and layout
     fig = plt.figure(figsize=(8, 9))
+    ax = fig.add_axes([0.12, 0.08, 0.75, 0.75])
 
-    # Fixed layout: title area at top, table below
-    # Using fixed axes positions to ensure consistent table placement
-    title_height = 0.12  # Fixed height for title area
-    ax = fig.add_axes([0.12, 0.08, 0.75, 0.75])  # [left, bottom, width, height]
+    ax.imshow(matrix, cmap=CMAP, vmin=VMIN, vmax=VMAX, aspect='auto')
 
-    # Custom colormap with gradients:
-    # < 8 kN: blue -> cyan -> green (safe)
-    # 8-10 kN: yellow -> orange (caution)
-    # > 10 kN: red -> dark red -> crazy purple (danger)
-    threshold_caution = 8.0
-    threshold_danger = 10.0
-
-    # Normalize threshold positions to [0, 1] range
-    norm_caution = (threshold_caution - vmin) / (vmax - vmin)
-    norm_danger = (threshold_danger - vmin) / (vmax - vmin)
-
-    # Clamp to valid range
-    norm_caution = max(0.0, min(1.0, norm_caution))
-    norm_danger = max(0.0, min(1.0, norm_danger))
-
-    # Build gradient with multiple stops in each zone
-    colors = []
-    positions = []
-
-    # Zone 1: Green-blue gradient (vmin to 8)
-    colors.extend(
-        [
-            (0.3, 0.8, 0.4),  # green
-            (0.2, 0.7, 0.7),  # cyan
-            (0.2, 0.4, 0.8),  # blue
-        ]
-    )
-    positions.extend(
-        [
-            0.0,
-            norm_caution * 0.5,
-            norm_caution,
-        ]
-    )
-
-    # Zone 2: Yellow-orange gradient (8 to 10)
-    colors.extend(
-        [
-            (0.95, 0.9, 0.3),  # yellow
-            (0.95, 0.6, 0.2),  # orange
-        ]
-    )
-    positions.extend(
-        [
-            norm_caution + 0.001,
-            norm_danger,
-        ]
-    )
-
-    # Zone 3: Red to black gradient (10 to vmax)
-    colors.extend(
-        [
-            (0.9, 0.2, 0.2),  # red
-            (0.6, 0.1, 0.1),  # dark red
-            (0.3, 0.05, 0.05),  # very dark red
-            (0.0, 0.0, 0.0),  # black
-        ]
-    )
-    positions.extend(
-        [
-            norm_danger + 0.001,
-            norm_danger + (1.0 - norm_danger) * 0.33,
-            norm_danger + (1.0 - norm_danger) * 0.66,
-            1.0,
-        ]
-    )
-
-    cmap = mcolors.LinearSegmentedColormap.from_list('danger', list(zip(positions, colors)))
-
-    # Create heatmap
-    im = ax.imshow(matrix, cmap=cmap, vmin=vmin, vmax=vmax, aspect='auto')
-
-    # Set ticks
     ax.set_xticks(range(len(jerk_limits)))
     ax.set_xticklabels([str(jl) for jl in jerk_limits])
     ax.set_yticks(range(len(drop_rates)))
     ax.set_yticklabels([f'{dr:.0f}' for dr in drop_rates])
-
-    # Labels
     ax.set_xlabel('Jerk Limit (m/s³)', fontsize=12)
     ax.set_ylabel('Drop Rate (m/s)', fontsize=12)
 
-    # Build title based on bottom_out_force_kN
     if bottom_out_force_kN is not None and bottom_out_force_kN >= 9999:
         title = 'Buttock tissue\nno bottoming out limit'
     elif bottom_out_force_kN is not None:
@@ -420,42 +248,18 @@ def process_csv(csv_path):
     else:
         title = 'Buttock tissue'
 
-    # Title with fixed position
     fig.text(0.5, 0.92, title, ha='center', va='center', fontsize=14, fontweight='bold')
 
-    # Add text annotations
     for i, dr in enumerate(drop_rates):
         for j, jl in enumerate(jerk_limits):
             if (dr, jl) in data:
                 kn = data[(dr, jl)]['kN']
                 peak_g = data[(dr, jl)]['peak_g']
-
-                # Determine text color based on kN value
-                if kn >= threshold_danger:
-                    text_color = 'white'
-                elif kn >= threshold_caution:
-                    text_color = 'black'
-                else:
-                    # Blue-green zone: white for darker blues, black for lighter greens
-                    norm_in_zone = (
-                        (kn - vmin) / (threshold_caution - vmin) if threshold_caution > vmin else 0
-                    )
-                    text_color = 'white' if norm_in_zone < 0.4 else 'black'
-
-                ax.text(
-                    j,
-                    i,
-                    f'{kn:.2f}kN\n({peak_g:.0f}G)',
-                    ha='center',
-                    va='center',
-                    fontsize=9,
-                    color=text_color,
-                    fontweight='bold',
-                )
+                ax.text(j, i, f'{kn:.2f}kN\n({peak_g:.0f}G)', ha='center', va='center',
+                        fontsize=9, color=get_text_color(kn), fontweight='bold')
             else:
                 ax.text(j, i, 'N/A', ha='center', va='center', fontsize=9, color='gray')
 
-    # Save
     plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
     print(f'Saved to: {output_path}')
     plt.close()
@@ -470,18 +274,15 @@ def main():
         print(f'Output directory does not exist: {output_base}')
         return
 
-    # Check for a specific subfolder argument (excluding --grid flag)
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
 
     if args:
-        # Process only the specified subfolder
         subfolder = output_base / args[0]
         if not subfolder.exists():
             print(f'Subfolder does not exist: {subfolder}')
             return
         subfolders = [subfolder]
     else:
-        # Find all subfolders in output/
         subfolders = sorted([d for d in output_base.iterdir() if d.is_dir()])
 
     if not subfolders:
@@ -493,14 +294,12 @@ def main():
         print(f'Processing: {subfolder.name}')
         print(f'{"=" * 60}')
 
-        # Find batch subfolders (e.g., 85-7, 305-unlimited)
         batch_dirs = [d for d in subfolder.iterdir() if d.is_dir()]
 
         if not batch_dirs:
             print(f'  No batch folders found in {subfolder}')
             continue
 
-        # Collect CSV files from batch subfolders
         csv_files = []
         for batch_dir in sorted(batch_dirs):
             csv_path = batch_dir / f'{batch_dir.name}.csv'
@@ -508,15 +307,13 @@ def main():
                 csv_files.append(csv_path)
 
         if not csv_files:
-            print(f'  No CSV files found in batch folders')
+            print('  No CSV files found in batch folders')
             continue
 
         if '--grid' in sys.argv:
-            # Original mode: generate individual tables per CSV
             for csv_path in csv_files:
                 process_csv(csv_path)
         else:
-            # Default: universal comparison table
             process_universal(subfolder)
 
 
