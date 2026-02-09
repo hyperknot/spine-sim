@@ -19,13 +19,11 @@ This model is intentionally built from a small set of "pillars" that each contri
 
 Kemper's fitted relationship (as written in the paper) is:
 
-\[
-k = 57.328 \dot{\varepsilon} + 2019.1
-\]
+$$k = 57.328 \dot{\varepsilon} + 2019.1$$
 
-(with \(k\) in N/mm).
+(with $k$ in N/mm).
 
-In this README we will refer to \(\dot{\varepsilon}\) as **disc compression strain-rate** (computed from how fast the disc shortens, scaled by an effective disc height).
+In this README we will refer to $\dot{\varepsilon}$ as **disc compression strain-rate** (computed from how fast the disc shortens, scaled by an effective disc height).
 
 ### 2) Baseline stiffness distribution by spinal level - Kitazaki & Griffin
 
@@ -40,9 +38,7 @@ In this README we will refer to \(\dot{\varepsilon}\) as **disc compression stra
 - OpenSim provides a combined `head_neck` body, and this model does **not** include explicit C1...C7 nodes.
 - Therefore the model computes the baseline `HEAD - T1` stiffness by combining the 8 Kitazaki cervical joints **in series** (same series-connection idea used when combining multiple discs in Kemper-style analysis):
 
-\[
-k_{\text{HEAD - T1,eff}} = \left(\sum_{i=1}^{8}\frac{1}{k_i}\right)^{-1}
-\]
+$$k_{\text{HEAD - T1,eff}} = \left(\sum_{i=1}^{8}\frac{1}{k_i}\right)^{-1}$$
 
 This yields an effective baseline `HEAD - T1` stiffness of about **84 kN/m** (much lower than the single C7 - T1 joint stiffness alone).
 
@@ -110,7 +106,7 @@ Each disc-like element behaves like a Kelvin - Voigt element (spring + damper) i
 Strain-rate is computed from compression-only closing speed:
 
 - Compression speed is derived from relative velocity across each element.
-- The compression speed is divided by an element-specific effective height to obtain \(\dot{\varepsilon}\).
+- The compression speed is divided by an element-specific effective height to obtain $\dot{\varepsilon}$.
 
 Config keys (clarified):
 
@@ -124,11 +120,9 @@ Neck lumping details:
 - The element `HEAD - T1` represents 8 Kitazaki cervical joints in series (Head - C1 … C7 - T1).
 - For strain-rate only, the effective height is treated as a stacked height:
 
-\[
-h_{\text{eff}}(\text{HEAD - T1}) = 8 \cdot \texttt{spine.cervical\_disc\_height\_single\_mm}
-\]
+$$h_{\text{eff}}(\text{HEAD - T1}) = 8 \cdot \texttt{spine.cervical\_disc\_height\_single\_mm}$$
 
-This prevents the lumped neck element from seeing an artificially high \(\dot{\varepsilon}\) simply because multiple joints were collapsed into one.
+This prevents the lumped neck element from seeing an artificially high $\dot{\varepsilon}$ simply because multiple joints were collapsed into one.
 
 ### 5) Buttocks element: contact + bottom-out
 
