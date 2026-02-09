@@ -233,13 +233,10 @@ Input CSV files in `input/` should contain:
 2. Van Toen, C., Sran, M. M., Robinovitch, S. N., Cripton, P. A. (2012). _Transmission of force in the lumbosacral spine during backward falls_. Spine. DOI: 10.1097/BRS.0b013e31823ecae0.
 
 3. Kemper, A., McNally, C., Manoogian, S., McNeely, D., Duma, S. (Paper Number 07-0471). _Stiffness Properties of Human Lumbar Intervertebral Discs in Compression and the Influence of Strain Rate_.
-   (Included in this repo as `kemper_2013_stiffness_properties.md`.)
 
 4. Kitazaki, S., Griffin, M. J. (1997). _A modal analysis of whole-body vertical vibration, using a finite element model of the human body_. Journal of Sound and Vibration, 200(1), 83 - 103.
-   (Included in this repo as `kitazaki_1996_vibration_modal.md`.)
 
 5. Wang, M. C., Kiapour, A., Massaad, E., Shin, J. H., Yoganandan, N. (2024). _A guide to finite element analysis models of the spine for clinicians_. J Neurosurg Spine, 40, 38 - 44.
-   (Included in this repo as `wang_2024_fea_guide.md`.)
 
 ---
 
