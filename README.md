@@ -120,7 +120,7 @@ Neck lumping details:
 - The element `HEAD - T1` represents 8 Kitazaki cervical joints in series (Head - C1 … C7 - T1).
 - For strain-rate only, the effective height is treated as a stacked height:
 
-$$h_{\text{eff}}(\text{HEAD - T1}) = 8 \cdot \texttt{spine.cervical\_disc\_height\_single\_mm}$$
+$$h_{\text{eff}}(\text{HEAD - T1}) = 8 \times \text{cervical disc height single mm}$$
 
 This prevents the lumped neck element from seeing an artificially high $\dot{\varepsilon}$ simply because multiple joints were collapsed into one.
 
