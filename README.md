@@ -14,8 +14,8 @@ This model is intentionally built from a small set of "pillars" that each contri
 
 **Why it matters:** this is the core reason the model reacts differently to "fast-onset" vs "slow-onset" impacts.
 
-- **What Kemper did (real-world testing):** axial compression tests on **human lumbar intervertebral discs** using a **servo-hydraulic material testing system**, across multiple loading rates, and then a fitted relationship between loading rate and compressive stiffness.
-- **What we take from it:** the fitted stiffness relationship (Equation 1) used to make disc compression stiffness **increase when the disc is compressed faster**.
+- **What Kemper did (real-world testing):** axial compression tests on **human lumbar intervertebral discs** across multiple loading rates, with a fitted relationship between loading rate and compressive stiffness.
+- **What we take from it:** the fitted stiffness relationship used to make disc compression stiffness **increase when the disc is compressed faster**.
 
 Kemper's fitted relationship (as written in the paper) is:
 
@@ -25,7 +25,7 @@ k = 57.328 \dot{\varepsilon} + 2019.1
 
 (with \(k\) in N/mm).
 
-In this README we will refer to \(\dot{\varepsilon}\) as **disc compression speed** (Kemper's variable is a "rate" term computed from how fast the disc shortens, scaled by disc height).
+In this README we will refer to \(\dot{\varepsilon}\) as **disc compression strain-rate** (computed from how fast the disc shortens, scaled by an effective disc height).
 
 ### 2) Baseline stiffness distribution by spinal level - Kitazaki & Griffin
 
@@ -34,12 +34,24 @@ In this README we will refer to \(\dot{\varepsilon}\) as **disc compression spee
 - **What Kitazaki & Griffin did:** a **2D finite-element** whole-body vibration model, validated by matching **measured vibration mode shapes below 10 Hz**.
 - **What we take from it:** the **axial stiffness values** of the spinal "disc-like" elements by level (their Table 4 axial stiffnesses), used here as a **slow-loading baseline** distribution along the spine.
 
+**Important cervical detail (because this repo simplifies the neck):**
+
+- Kitazaki Table 4 includes cervical axial stiffnesses for **Head - C1 through C7 - T1**.
+- OpenSim provides a combined `head_neck` body, and this model does **not** include explicit C1...C7 nodes.
+- Therefore the model computes the baseline `HEAD - T1` stiffness by combining the 8 Kitazaki cervical joints **in series** (same series-connection idea used when combining multiple discs in Kemper-style analysis):
+
+\[
+k_{\text{HEAD - T1,eff}} = \left(\sum_{i=1}^{8}\frac{1}{k_i}\right)^{-1}
+\]
+
+This yields an effective baseline `HEAD - T1` stiffness of about **84 kN/m** (much lower than the single C7 - T1 joint stiffness alone).
+
 ### 3) Seat/buttocks stiffness and damping - Van Toen et al.
 
 **Why it matters:** in drop tests, the seat/buttocks interface is often the dominant compliance early in the event and strongly affects peak internal forces.
 
 - **What Van Toen et al. did:** measured buttocks mechanics in a fall-related loading context.
-- **What we take from it:** mean buttocks stiffness and damping values, reused here as a seat-contact element.
+- **What we take from it:** representative buttocks stiffness and damping values, reused here as a seat-contact element.
 
 ### 4) Segment masses - Bruno et al. / OpenSim
 
@@ -48,6 +60,9 @@ In this README we will refer to \(\dot{\varepsilon}\) as **disc compression spee
 - **What we take from Bruno/OpenSim:** **segment masses only** (and relative vertical positions for plotting).
 - **What we do not take from OpenSim:** no OpenSim dynamics, no muscle optimization, no joint/muscle forces from the musculoskeletal model.
 - **Important modeling consequence:** the OpenSim model provides a combined **`head_neck`** body; **cervical vertebrae are not modeled explicitly** here.
+  - Their individual stiffnesses (Kitazaki Table 4: Head - C1 through C7 - T1) are combined **in series** to derive the baseline `HEAD - T1` stiffness.
+  - The lumped `HEAD - T1` element uses a **stacked cervical height** for strain-rate computation so that Kemper scaling is not artificially inflated by the simplification.
+  - The lumped `HEAD - T1` damping is reduced using the same "elements in series" approximation (dashpots in series).
 
 ---
 
@@ -62,7 +77,7 @@ The body is modeled as a serial chain of lumped masses connected by axial elemen
 ```
 
 - **Nodes (masses):** pelvis, L5…T1, and HEAD (HEAD is the OpenSim `head_neck` lump, optionally with helmet mass).
-- **Elements:** one buttocks contact element, then one axial "disc" element per adjacent node pair.
+- **Elements:** one buttocks contact element, then one axial "disc-like" element per adjacent node pair.
 - **Target output:** internal axial force at **T12 - L1**.
 
 ### 2) Input: base acceleration excitation
@@ -76,19 +91,44 @@ The input is a measured acceleration time history (in g) interpreted as the **ba
 - A configurable fraction of total arm mass can be "recruited" into the chain and is added at **T1** (a shoulder-attachment-level simplification).
 - Optional helmet mass is added to `HEAD`.
 
-### 4) Disc elements: baseline distribution (Kitazaki) + compression-speed scaling (Kemper)
+### 4) Disc-like elements: baseline distribution (Kitazaki) + rate scaling (Kemper)
 
-Each disc element behaves like a Kelvin - Voigt element (spring + damper) in the axial direction.
+Each disc-like element behaves like a Kelvin - Voigt element (spring + damper) in the axial direction.
 
 **Baseline stiffness by level (slow-loading baseline):**
 
 - The model starts from Kitazaki & Griffin's **axial stiffness values by level** (their vibration-validated 2D FE work).
-- Kitazaki includes cervical segments; in this model they are lumped into `HEAD`, so the top stiffness is represented by **HEAD - T1**.
+- Kitazaki includes cervical segments; in this model they are lumped into `HEAD`, so the top stiffness is represented by **HEAD - T1** as a **series-equivalent** of Kitazaki's cervical joints.
 
-**Compression stiffness increases with disc compression speed (Kemper):**
+**Compression stiffness increases with strain-rate (Kemper):**
 
-- During compression, disc stiffness is increased according to Kemper's fitted relationship (equation shown above).
+- During compression, stiffness is increased according to Kemper's fitted relationship.
 - **Only compression stiffness is Kemper-scaled.** Tension stiffness is kept constant (a pragmatic choice to keep the chain connected without claiming rate-dependent tensile data).
+
+#### Strain-rate computation and disc heights (important)
+
+Strain-rate is computed from compression-only closing speed:
+
+- Compression speed is derived from relative velocity across each element.
+- The compression speed is divided by an element-specific effective height to obtain \(\dot{\varepsilon}\).
+
+Config keys (clarified):
+
+- `spine.disc_height_mm` is the height of **one thoracic/lumbar IVD** (single-disc height used for all non-neck elements).
+- `spine.cervical_disc_height_single_mm` is the height of **one cervical IVD** (single-disc height).
+  - This repo uses Wang et al. (2024) Table 2 baseline value: **5.6 mm**.
+  - Wang also reports example subject-specific disc-height values of **4.7 mm** and **6.3 mm**, which are useful for sensitivity sweeps.
+
+Neck lumping details:
+
+- The element `HEAD - T1` represents 8 Kitazaki cervical joints in series (Head - C1 … C7 - T1).
+- For strain-rate only, the effective height is treated as a stacked height:
+
+\[
+h_{\text{eff}}(\text{HEAD - T1}) = 8 \cdot \texttt{spine.cervical\_disc\_height\_single\_mm}
+\]
+
+This prevents the lumped neck element from seeing an artificially high \(\dot{\varepsilon}\) simply because multiple joints were collapsed into one.
 
 ### 5) Buttocks element: contact + bottom-out
 
@@ -124,24 +164,24 @@ _Future direction:_ a thickness-based (mm-based) bottom-out parameterization is 
 
 ### Parameter assumptions (what may affect absolute results)
 
-- **Kemper scope:** Kemper tested **lumbar** discs; this model applies the same compression-speed scaling across all modeled levels as an engineering approximation.
-  - Rationale: many models effectively lump everything above T12; here we at least keep segments above T12 separate, but we still treat their disc rate-scaling as an approximation.
-- **Uniform disc height:** a single disc height (11.3 mm from Kemper's compilation) is used everywhere to relate "disc compression speed" to Kemper's rate variable.
-  - This is a global assumption. We expect limited sensitivity for T12 - L1 in typical drops, but this has **not** been formally tested here yet.
-  - Further work: explicitly test sensitivity to disc height choices.
+- **Kemper scope:** Kemper tested **lumbar** discs; this model applies the same compression strain-rate scaling across all modeled levels as an engineering approximation.
+- **Disc heights:**
+  - Thoracic/lumbar elements use a single configured disc height (`spine.disc_height_mm`) as a simplifying assumption.
+  - The lumped cervical element uses a stacked height computed from a single cervical disc height (`spine.cervical_disc_height_single_mm`) times 8.
 - **Buttocks bottom-out threshold is not literature-derived (in this repo):**
   - It is set from a thickness-based engineering assumption (typical available compression distance) and converted to a force threshold using stiffness.
   - Further work: validate bottom-out thickness/force across subjects and seat/harness configurations.
-- **Uniform disc damping:** the same damping value is used for all discs.
-  - Practical note: varying disc damping from 300 to 6000 Ns/m changed peak T12 - L1 by **≤ 5%** across **40 drops** (in the author's dataset).
+- **Uniform disc damping:** the same damping value is used for most disc-like elements.
+  - Practical note: varying disc damping from 300 to 6000 Ns/m changed peak T12 - L1 by ≤ 5% across 40 drops (in the author's dataset).
 - **Cervical lumping:** cervical vertebrae are not modeled explicitly (OpenSim `head_neck` is used as a single lumped mass).
+  - `HEAD - T1` damping is reduced using a series-equivalent approximation to match the same lumping assumption.
 - **Tension response:** tensile stiffness is constant and not Kemper-scaled (compression-only rate scaling).
 
 ---
 
 ## Outputs (what you get)
 
-For each input file `drops/<name>.csv`, results are written under `output/<name>/`:
+For each input file `input/<name>.csv`, results are written under `output/<name>/`:
 
 - `timeseries.csv` (time histories)
 - `displacements.png`
@@ -150,7 +190,7 @@ For each input file `drops/<name>.csv`, results are written under `output/<name>
 
 A batch summary is written to:
 
-- `output/summary.json`
+- `output/summary.csv` (or a configured name)
 
 Key engineer-facing outputs:
 
@@ -167,15 +207,15 @@ Key engineer-facing outputs:
 
 Install with uv.
 
-### Run over all CSV files in `drops/`
+### Run over all CSV files in `input/`
 
 ```bash
 ./simulate.py
 ```
 
-### Input CSV format (drops)
+### Input CSV format (input)
 
-Input CSV files in `drops/` should contain:
+Input CSV files in `input/` should contain:
 
 - a time column: `time` (or `time0` or `t`) in seconds or milliseconds,
 - an acceleration column: `accel` (or `acceleration`) in g.
@@ -184,7 +224,7 @@ Input CSV files in `drops/` should contain:
 
 ## Implementation details (intentionally kept at the bottom)
 
-- **Disc compression-speed computation:** internally computed from relative node closing velocity (compression only) and a uniform disc height; it is then used to evaluate Kemper's fitted stiffness relation.
+- **Disc strain-rate computation:** computed from relative node closing velocity (compression only) divided by an element-specific effective height; it is then used to evaluate Kemper's fitted stiffness relation.
 - **Disc stiffness application:** Kemper scaling is applied to **compression stiffness only**; tension stiffness is constant.
 - **Signal processing:** the tool can apply a CFC low-pass filter to the input acceleration and then extract a simulation window; details are intentionally treated as implementation-level and are kept in code.
 - **Numerics:** nonlinear Newmark integration with Newton iterations is used; disc compression stiffness is updated stepwise with smoothing for stability.
@@ -204,7 +244,8 @@ Input CSV files in `drops/` should contain:
 4. Kitazaki, S., Griffin, M. J. (1997). _A modal analysis of whole-body vertical vibration, using a finite element model of the human body_. Journal of Sound and Vibration, 200(1), 83 - 103.
    (Included in this repo as `kitazaki_1996_vibration_modal.md`.)
 
----
+5. Wang, M. C., Kiapour, A., Massaad, E., Shin, J. H., Yoganandan, N. (2024). _A guide to finite element analysis models of the spine for clinicians_. J Neurosurg Spine, 40, 38 - 44.
+   (Included in this repo as `wang_2024_fea_guide.md`.)
 
 ---
 

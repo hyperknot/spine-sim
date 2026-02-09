@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from spine_sim.model import G0
+
 
 def build_mass_map(
     masses: dict,
@@ -12,14 +14,18 @@ def build_mass_map(
     """
     Build mass map from OpenSim body masses.
 
-    This simplified model uses OpenSim's provided head/neck lump:
-      - OpenSim file provides 'head_neck' as a combined lump already.
+    Neck simplification:
+      - OpenSim provides 'head_neck' as a combined lump (head + neck soft tissue + cervical vertebrae).
+      - We keep this as a single modeled node mass: HEAD.
       - We do NOT create separate cervical vertebra nodes or masses.
 
     Arms:
       - arm_recruitment is interpreted as the fraction of total arm mass whose
         weight/inertia loads the spine (vs being supported externally by thighs/armrests/table).
       - Recruited arm mass is added to T1 (shoulder/upper thorax region), NOT to HEAD.
+
+    Helmet:
+      - helmet_mass is added to HEAD.
     """
     b = masses['bodies']
 
@@ -65,10 +71,12 @@ def build_mass_map(
 
     # Debug: print mass at each vertebrae level
     echo('Mass map (modeled vertebrae):')
+    echo('  node     mass_kg   weight_N')
     for name, mass_kg in mass_map.items():
-        echo(f'  {name:6s}: {mass_kg:7.3f} kg')
-    total_mass_kg = sum(mass_map.values())
-    echo(f'  {"TOTAL":6s}: {total_mass_kg:7.3f} kg')
+        w_n = float(mass_kg) * G0
+        echo(f'  {name:6s}  {mass_kg:7.3f}  {w_n:8.1f}')
+    total_mass_kg = float(sum(mass_map.values()))
+    echo(f'  {"TOTAL":6s}  {total_mass_kg:7.3f}  {total_mass_kg * G0:8.1f}')
     echo(f'  arms_total={arm_mass_total:.3f} kg, arms_to_spine={arm_mass_to_spine:.3f} kg')
     echo(f'  (arm_recruitment={arm_recruitment:.1%}, helmet={helmet_mass:.2f} kg)')
 

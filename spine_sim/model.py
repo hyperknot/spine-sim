@@ -25,12 +25,15 @@ def kemper_k_n_per_m(strain_rate_per_s: float) -> float:
 class SpineModel:
     node_names: list[str]
     masses_kg: np.ndarray  # (N,)
-    element_names: list[str]  # buttocks + discs
+    element_names: list[str]  # buttocks + discs/aggregates
     k0_elem_n_per_m: np.ndarray  # (N_elem,) baseline stiffness (buttocks placeholder at index 0)
     c_elem_ns_per_m: np.ndarray  # (N_elem,)
 
-    # Global disc strain-rate model parameters
-    disc_height_m: float
+    # Effective disc heights used for strain-rate calculation, per element.
+    # element 0 (buttocks) should be 0.0 (unused).
+    disc_height_m_per_elem: np.ndarray  # (N_elem,)
+
+    # Global disc model parameters
     tension_k_mult: float
 
     # Buttocks bilinear contact parameters (gap removed; always 0)
@@ -69,7 +72,7 @@ class SimulationResult:
     a: np.ndarray  # (T, N)
     element_forces_n: np.ndarray  # (T, N_elem)
 
-    # Diagnostics (optional but always computed now)
+    # Diagnostics
     strain_rate_per_s: np.ndarray  # (T, N_elem)
     k_dynamic_n_per_m: np.ndarray  # (T, N_elem)
 
@@ -80,14 +83,18 @@ def _alpha_lp(dt: float, tau: float) -> float:
     return float(dt / (tau + dt))
 
 
-def _disc_strain_rate_per_s(model: SpineModel, relv_mps: float) -> float:
+def _disc_strain_rate_per_s(disc_height_m: float, relv_mps: float) -> float:
     """
     eps_dot ≈ compression_rate / h0, where compression_rate = max(-relv, 0).
+
+    disc_height_m is element-specific so that aggregated elements (e.g. a lumped neck)
+    can use an effective height that matches the missing series stack.
     """
-    if model.disc_height_m <= 0.0:
+    h = float(disc_height_m)
+    if h <= 0.0:
         return 0.0
     compression_rate = max(-float(relv_mps), 0.0)
-    return compression_rate / model.disc_height_m
+    return compression_rate / h
 
 
 def _disc_k_multiplier(model: SpineModel, eps_dot: float) -> float:
@@ -239,7 +246,7 @@ def _assemble_forces_and_tangent(
         ext = float(y[j] - y[i])
         relv = float(v[j] - v[i])
 
-        eps_raw[e] = _disc_strain_rate_per_s(model, relv)
+        eps_raw[e] = _disc_strain_rate_per_s(float(model.disc_height_m_per_elem[e]), relv)
 
         # Compression uses Kemper-scaled stiffness; tension uses constant baseline * tension_k_mult
         k_comp = float(k_comp_step[e])
@@ -404,7 +411,7 @@ def newmark_nonlinear(
             eps_raw = np.zeros(ne, dtype=float)
             for e in range(1, n):
                 relv = float(v_guess[e] - v_guess[e - 1])
-                eps_raw[e] = _disc_strain_rate_per_s(model, relv)
+                eps_raw[e] = _disc_strain_rate_per_s(float(model.disc_height_m_per_elem[e]), relv)
 
             if it == 0:
                 # Update smoothing ONCE per timestep, then freeze compression stiffness

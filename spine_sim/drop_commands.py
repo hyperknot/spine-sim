@@ -5,7 +5,6 @@ from __future__ import annotations
 import csv
 import json
 import shutil
-from pathlib import Path
 
 import numpy as np
 from spine_sim.input_processing import process_input
@@ -19,7 +18,6 @@ from spine_sim.plotting import (
     plot_forces,
     plot_gravity_settling,
 )
-from spine_sim.range import find_hit_range
 from spine_sim.settings import (
     REPO_ROOT,
     load_json,
@@ -110,10 +108,23 @@ def run_simulate_drop(
     echo(f'  implied bottom_out_compression = {x0_mm:.3f} mm')
 
     # Spine config debug
+    neck_elem_idx = model.element_names.index('HEAD-T1')
+    neck_k0 = float(model.k0_elem_n_per_m[neck_elem_idx])
+    neck_c = float(model.c_elem_ns_per_m[neck_elem_idx])
+    neck_h_mm = float(model.disc_height_m_per_elem[neck_elem_idx] * 1000.0)
+
+    # For reference, the configured thoraco-lumbar disc height (most elements)
+    disc_height_mm = float(req_float(config, ['spine', 'disc_height_mm']))
+
     echo('Spine model:')
-    echo(f'  disc_height = {model.disc_height_m * 1000.0:.3f} mm (uniform)')
+    echo(f'  disc_height (thoraco-lumbar) = {disc_height_mm:.3f} mm (used for most elements)')
     echo(
-        f'  damping = {float(req_float(config, ["spine", "damping_ns_per_m"])):.1f} Ns/m (all IVDs)'
+        f'  HEAD-T1 baseline k0 = {neck_k0 / 1000.0:.3f} kN/m ({neck_k0 / 1.0e6:.6f} MN/m, Kitazaki cervical series eq)'
+    )
+    echo(f'  HEAD-T1 damping c = {neck_c:.3f} Ns/m (series-equivalent approximation)')
+    echo(f'  HEAD-T1 effective height = {neck_h_mm:.3f} mm (cervical stack height for eps_dot)')
+    echo(
+        f'  damping baseline = {float(req_float(config, ["spine", "damping_ns_per_m"])):.1f} Ns/m (most elements)'
     )
     echo(
         f'  tension_k_mult = {model.tension_k_mult:.3f} (tension stiffness is constant, not Kemper-scaled)'
@@ -142,7 +153,7 @@ def run_simulate_drop(
     pattern = INPUT_PATTERN
 
     # Determine config filename (matches output CSV name)
-    config_basename = (output_filename.replace('.csv', '.json') if output_filename else 'config.json')
+    config_basename = output_filename.replace('.csv', '.json') if output_filename else 'config.json'
     out_config_path = out_dir / config_basename
 
     # Check if output already exists with same config AND csv exists
@@ -151,7 +162,9 @@ def run_simulate_drop(
         with open(out_config_path, encoding='utf-8') as f:
             existing_config = json.load(f)
         if existing_config == config and csv_path.exists():
-            echo(f'Skipping {subfolder or "output"}/{config_basename}: config unchanged and csv exists')
+            echo(
+                f'Skipping {subfolder or "output"}/{config_basename}: config unchanged and csv exists'
+            )
             return []
         # Config changed OR csv missing - remove old output files and regenerate
         echo(f'Config changed or csv missing for {config_basename}, regenerating')

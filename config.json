@@ -25,6 +25,7 @@
   },
   "spine": {
     "disc_height_mm": 11.3,
+    "cervical_disc_height_single_mm": 5.6,
     "tension_k_mult": 0.1,
     "damping_ns_per_m": 1200.0,
     "kemper": {

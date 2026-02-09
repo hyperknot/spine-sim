@@ -5,16 +5,68 @@ from spine_sim.model import SpineModel
 from spine_sim.settings import req_float
 
 
+def _series_equivalent_stiffness(k_list_n_per_m: list[float]) -> float:
+    """
+    Springs in series:
+      1/k_eq = sum(1/k_i).
+    """
+    if not k_list_n_per_m:
+        raise ValueError('k_list_n_per_m must be non-empty.')
+    inv = 0.0
+    for k in k_list_n_per_m:
+        kk = float(k)
+        if kk <= 0.0:
+            raise ValueError('All stiffness values must be > 0 for series equivalent.')
+        inv += 1.0 / kk
+    return 1.0 / inv
+
+
+def _series_equivalent_damping(c_list_ns_per_m: list[float]) -> float:
+    """
+    Dashpots in series:
+      1/c_eq = sum(1/c_i).
+
+    Note: A Kelvin-Voigt stack in series is not perfectly reducible to a single Kelvin-Voigt
+    element across all frequencies. Here we use the standard "dashpots in series" reduction
+    as a physically reasonable approximation consistent with this simplified 1D model.
+    """
+    if not c_list_ns_per_m:
+        raise ValueError('c_list_ns_per_m must be non-empty.')
+    inv = 0.0
+    for c in c_list_ns_per_m:
+        cc = float(c)
+        if cc <= 0.0:
+            raise ValueError('All damping values must be > 0 for series equivalent.')
+        inv += 1.0 / cc
+    return 1.0 / inv
+
+
 def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
     """
     Build the 1D axial chain model:
+
       [Base] -- buttocks -- pelvis -- L5 -- ... -- T1 -- HEAD
 
-    Note: HEAD is OpenSim's lumped head/neck (incl. cervical) mass, optionally with helmet + recruited arms.
+    Baseline stiffness:
+      - Thoraco-lumbar: Kitazaki & Griffin (1997), Table 4 axial stiffness by level.
+      - Cervical simplification: HEAD-T1 baseline stiffness is the *series equivalent*
+        of Kitazaki Table 4 cervical joints Head-C1 ... C7-T1.
+
+    Rate dependence:
+      - Kemper multiplier is applied in compression as a multiplicative factor on baseline k0.
+      - Strain-rate uses element-specific effective disc heights.
+        For HEAD-T1 we use the cervical stack height (N * cervical_disc_height_single_mm), where
+        cervical_disc_height_single_mm is explicitly the height of ONE cervical disc.
     """
     disc_height_mm = float(req_float(config, ['spine', 'disc_height_mm']))
     if disc_height_mm <= 0.0:
         raise ValueError('spine.disc_height_mm must be > 0.')
+
+    cervical_disc_height_single_mm = float(
+        req_float(config, ['spine', 'cervical_disc_height_single_mm'])
+    )
+    if cervical_disc_height_single_mm <= 0.0:
+        raise ValueError('spine.cervical_disc_height_single_mm must be > 0.')
 
     tension_k_mult = float(req_float(config, ['spine', 'tension_k_mult']))
     if tension_k_mult < 0.0:
@@ -24,7 +76,6 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
     if c_disc < 0.0:
         raise ValueError('spine.damping_ns_per_m must be >= 0.')
 
-    # Nodes bottom-to-top
     node_names = [
         'pelvis',
         'L5',
@@ -49,29 +100,6 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
 
     masses = np.array([float(mass_map[n]) for n in node_names], dtype=float)
 
-    # Baseline axial stiffnesses (N/m): Kitazaki/Griffin distribution.
-    # Cervical vertebrae are not explicit here, so the top connection is HEAD-T1.
-    k = {
-        'HEAD-T1': 1.334e6,
-        'T1-T2': 0.7e6,
-        'T2-T3': 1.2e6,
-        'T3-T4': 1.5e6,
-        'T4-T5': 2.1e6,
-        'T5-T6': 1.9e6,
-        'T6-T7': 1.8e6,
-        'T7-T8': 1.5e6,
-        'T8-T9': 1.5e6,
-        'T9-T10': 1.5e6,
-        'T10-T11': 1.5e6,
-        'T11-T12': 1.5e6,
-        'T12-L1': 1.8e6,
-        'L1-L2': 2.13e6,
-        'L2-L3': 2.0e6,
-        'L3-L4': 2.0e6,
-        'L4-L5': 1.87e6,
-        'L5-S1': 1.47e6,
-    }
-
     element_names = [
         'buttocks',
         'L5-S1',
@@ -94,19 +122,73 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
         'HEAD-T1',
     ]
 
-    # Stiffness per element (element 0 is buttocks, filled from config)
+    k_kitazaki_thoracolumbar = {
+        'T1-T2': 0.70e6,
+        'T2-T3': 1.20e6,
+        'T3-T4': 1.50e6,
+        'T4-T5': 2.10e6,
+        'T5-T6': 1.90e6,
+        'T6-T7': 1.80e6,
+        'T7-T8': 1.50e6,
+        'T8-T9': 1.50e6,
+        'T9-T10': 1.50e6,
+        'T10-T11': 1.50e6,
+        'T11-T12': 1.50e6,
+        'T12-L1': 1.80e6,
+        'L1-L2': 2.13e6,
+        'L2-L3': 2.00e6,
+        'L3-L4': 2.00e6,
+        'L4-L5': 1.87e6,
+        'L5-S1': 1.47e6,
+    }
+
+    # Kitazaki & Griffin (1997) Table 4 cervical chain (N/m):
+    # Head-C1, C1-C2, ..., C7-T1.
+    k_kitazaki_cervical_chain = [
+        0.550e6,  # Head-C1
+        0.300e6,  # C1-C2
+        0.700e6,  # C2-C3
+        0.760e6,  # C3-C4
+        0.794e6,  # C4-C5
+        0.967e6,  # C5-C6
+        1.014e6,  # C6-C7
+        1.334e6,  # C7-T1
+    ]
+    neck_chain_count = len(k_kitazaki_cervical_chain)
+    k_head_t1_eq = _series_equivalent_stiffness(k_kitazaki_cervical_chain)
+
     k_elem = np.zeros(len(element_names), dtype=float)
-    k_elem[0] = 1.0  # placeholder; overwritten by buttocks config in SpineModel
+    k_elem[0] = 1.0  # buttocks placeholder
+
     for i, ename in enumerate(element_names[1:], start=1):
-        if ename not in k:
+        if ename == 'HEAD-T1':
+            k_elem[i] = float(k_head_t1_eq)
+            continue
+        if ename not in k_kitazaki_thoracolumbar:
             raise KeyError(f'Missing baseline stiffness for element: {ename}')
-        k_elem[i] = float(k[ename])
+        k_elem[i] = float(k_kitazaki_thoracolumbar[ename])
 
     c_elem = np.zeros(len(element_names), dtype=float)
-    c_elem[0] = 0.0  # buttocks filled from config
+    c_elem[0] = 0.0
     c_elem[1:] = c_disc
 
-    # Buttocks parameters (bilinear + contact), gap removed (always 0)
+    neck_elem_idx = element_names.index('HEAD-T1')
+    if c_disc > 0.0:
+        c_elem[neck_elem_idx] = _series_equivalent_damping([float(c_disc)] * neck_chain_count)
+    else:
+        c_elem[neck_elem_idx] = 0.0
+
+    # Per-element effective height for strain-rate:
+    # - most elements use the single thoraco-lumbar disc height from config (disc_height_mm).
+    # - HEAD-T1 uses a stacked height: N * cervical_disc_height_single_mm.
+    disc_height_m_per_elem = np.zeros(len(element_names), dtype=float)
+    disc_height_m_per_elem[0] = 0.0
+    disc_height_m_per_elem[1:] = float(disc_height_mm) / 1000.0
+    disc_height_m_per_elem[neck_elem_idx] = (
+        float(neck_chain_count) * float(cervical_disc_height_single_mm) / 1000.0
+    )
+
+    # Buttocks parameters
     k1 = float(req_float(config, ['buttock', 'k1_n_per_m']))
     c_butt = float(req_float(config, ['buttock', 'c_ns_per_m']))
     bottom_out_force_kN = float(req_float(config, ['buttock', 'bottom_out_force_kN']))
@@ -127,7 +209,7 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
         element_names=element_names,
         k0_elem_n_per_m=k_elem,
         c_elem_ns_per_m=c_elem,
-        disc_height_m=float(disc_height_mm) / 1000.0,
+        disc_height_m_per_elem=disc_height_m_per_elem,
         tension_k_mult=tension_k_mult,
         buttocks_k1_n_per_m=k1,
         buttocks_k2_n_per_m=k2,

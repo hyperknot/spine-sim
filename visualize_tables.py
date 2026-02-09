@@ -14,6 +14,7 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 # Color scale constants
 VMIN = 2.0
 VMAX = 14.0
@@ -25,6 +26,7 @@ def create_colormap():
     Progression: deep blue → blue → cyan → teal → green → yellow → orange
     Then above 10 kN: red → magenta → purple → dark purple
     """
+
     def kn_to_norm(kn):
         return (kn - VMIN) / (VMAX - VMIN)
 
@@ -114,7 +116,9 @@ def process_universal(output_dir):
 
     groups = []
     for bo in bottom_out_types:
-        group_configs = sorted([(c[0], c[1]) for c in configs_info if c[2] == bo], key=lambda x: x[1])
+        group_configs = sorted(
+            [(c[0], c[1]) for c in configs_info if c[2] == bo], key=lambda x: x[1]
+        )
         groups.append((bo, group_configs))
 
     all_data = {}
@@ -152,7 +156,7 @@ def process_universal(output_dir):
         if len(drop_rates) <= 1:
             is_grid_mode = False
 
-    print(f"  Mode: {'Grid' if is_grid_mode else 'List'} ({len(sorted_files)} files)")
+    print(f'  Mode: {"Grid" if is_grid_mode else "List"} ({len(sorted_files)} files)')
     n_rows = len(sorted_files)
 
     # In list mode with exactly 2 groups, create a single merged table
@@ -168,10 +172,10 @@ def process_universal(output_dir):
 
         # Fixed dimensions (in inches)
         cell_size = 0.55  # Each half-cell is square
-        gap_size = 0.25   # Gap between stiffness groups
+        gap_size = 0.25  # Gap between stiffness groups
         left_margin = 1.5  # Fixed space for row labels
         right_margin = 0.3
-        top_margin = 0.8   # Space for two-line title
+        top_margin = 0.8  # Space for two-line title
         bottom_margin = 0.5  # Space for stiffness label
 
         # Calculate figure size
@@ -220,43 +224,83 @@ def process_universal(output_dir):
 
                 # Draw left half (square)
                 left_color = CMAP(norm(left_kn)) if left_kn is not None else (0.9, 0.9, 0.9, 1)
-                rect_left = Rectangle((x - 1, i), 1, 1, facecolor=left_color, edgecolor='white', linewidth=0.5)
+                rect_left = Rectangle(
+                    (x - 1, i), 1, 1, facecolor=left_color, edgecolor='white', linewidth=0.5
+                )
                 ax.add_patch(rect_left)
 
                 # Draw right half (square)
                 right_color = CMAP(norm(right_kn)) if right_kn is not None else (0.9, 0.9, 0.9, 1)
-                rect_right = Rectangle((x, i), 1, 1, facecolor=right_color, edgecolor='white', linewidth=0.5)
+                rect_right = Rectangle(
+                    (x, i), 1, 1, facecolor=right_color, edgecolor='white', linewidth=0.5
+                )
                 ax.add_patch(rect_right)
 
                 # Add text for left half: kN on line 1, (G) on line 2
                 if left_kn is not None:
                     text_color = get_text_color(left_kn)
-                    ax.text(x - 0.5, i + 0.35, f'{left_kn:.1f} kN', ha='center', va='center',
-                            fontsize=7, color=text_color, fontweight='bold')
-                    ax.text(x - 0.5, i + 0.65, f'({left_g:.0f} G)', ha='center', va='center',
-                            fontsize=6, color=text_color)
+                    ax.text(
+                        x - 0.5,
+                        i + 0.35,
+                        f'{left_kn:.1f} kN',
+                        ha='center',
+                        va='center',
+                        fontsize=7,
+                        color=text_color,
+                        fontweight='bold',
+                    )
+                    ax.text(
+                        x - 0.5,
+                        i + 0.65,
+                        f'({left_g:.0f} G)',
+                        ha='center',
+                        va='center',
+                        fontsize=6,
+                        color=text_color,
+                    )
                 else:
-                    ax.text(x - 0.5, i + 0.5, 'N/A', ha='center', va='center', fontsize=7, color='gray')
+                    ax.text(
+                        x - 0.5, i + 0.5, 'N/A', ha='center', va='center', fontsize=7, color='gray'
+                    )
 
                 # Add text for right half: kN on line 1, (G) on line 2
                 if right_kn is not None:
                     text_color = get_text_color(right_kn)
-                    ax.text(x + 0.5, i + 0.35, f'{right_kn:.1f} kN', ha='center', va='center',
-                            fontsize=7, color=text_color, fontweight='bold')
-                    ax.text(x + 0.5, i + 0.65, f'({right_g:.0f} G)', ha='center', va='center',
-                            fontsize=6, color=text_color)
+                    ax.text(
+                        x + 0.5,
+                        i + 0.35,
+                        f'{right_kn:.1f} kN',
+                        ha='center',
+                        va='center',
+                        fontsize=7,
+                        color=text_color,
+                        fontweight='bold',
+                    )
+                    ax.text(
+                        x + 0.5,
+                        i + 0.65,
+                        f'({right_g:.0f} G)',
+                        ha='center',
+                        va='center',
+                        fontsize=6,
+                        color=text_color,
+                    )
                 else:
-                    ax.text(x + 0.5, i + 0.5, 'N/A', ha='center', va='center', fontsize=7, color='gray')
+                    ax.text(
+                        x + 0.5, i + 0.5, 'N/A', ha='center', va='center', fontsize=7, color='gray'
+                    )
 
         # Add stiffness labels below each column group
         for j, stiffness in enumerate(stiffness_values):
-            ax.text(x_positions[j], n_rows + 0.15, str(stiffness),
-                    ha='center', va='top', fontsize=10)
+            ax.text(
+                x_positions[j], n_rows + 0.15, str(stiffness), ha='center', va='top', fontsize=10
+            )
 
         # Add row labels to the left
         for i, filename in enumerate(sorted_files):
-            ax.text(-1.1, i + 0.5, filename.replace('.csv', ''),
-                    ha='right', va='center', fontsize=8)
+            ax.text(
+                -1.1, i + 0.5, filename.replace('.csv', ''), ha='right', va='center', fontsize=8
+            )
 
         # Center of table in figure coordinates
         table_center_x = ax_left + ax_width / 2
@@ -265,10 +309,24 @@ def process_universal(output_dir):
         left_label = 'unlimited' if bo_left == 'unlimited' else f'{bo_left} kN'
         right_label = 'unlimited' if bo_right == 'unlimited' else f'{bo_right} kN'
         title = f'Buttock bottoming out\n{left_label} (left) | {right_label} (right)'
-        fig.text(table_center_x, 1 - 0.3 / fig_height, title, ha='center', va='top', fontsize=11, fontweight='bold')
+        fig.text(
+            table_center_x,
+            1 - 0.3 / fig_height,
+            title,
+            ha='center',
+            va='top',
+            fontsize=11,
+            fontweight='bold',
+        )
 
         # Bottom label
-        fig.text(table_center_x, 0.0 / fig_height, 'Buttock tissue stiffness (kN/m)', ha='center', fontsize=10)
+        fig.text(
+            table_center_x,
+            0.0 / fig_height,
+            'Buttock tissue stiffness (kN/m)',
+            ha='center',
+            fontsize=10,
+        )
 
         # Remove all axes decorations
         for spine in ax.spines.values():
@@ -300,14 +358,23 @@ def process_universal(output_dir):
             width_ratios.append(0.3)
 
     fig = plt.figure(figsize=(fig_width, fig_height))
-    gs = GridSpec(1, len(width_ratios), figure=fig, width_ratios=width_ratios,
-                  left=0.15, right=0.95, top=0.95, bottom=0.12, wspace=0.05)
+    gs = GridSpec(
+        1,
+        len(width_ratios),
+        figure=fig,
+        width_ratios=width_ratios,
+        left=0.15,
+        right=0.95,
+        top=0.95,
+        bottom=0.12,
+        wspace=0.05,
+    )
 
     col_idx = 0
 
     for group_idx, (bo, group_configs) in enumerate(groups):
         n_cols = len(group_configs)
-        ax = fig.add_subplot(gs[0, col_idx:col_idx + n_cols])
+        ax = fig.add_subplot(gs[0, col_idx : col_idx + n_cols])
 
         matrix = np.full((n_rows, n_cols), np.nan)
         data_values = {}
@@ -324,7 +391,11 @@ def process_universal(output_dir):
         ax.set_xticks(range(n_cols))
         ax.set_xticklabels([str(stiffness) for _, stiffness in group_configs], fontsize=10)
 
-        group_title = 'Buttock tissue\nno bottoming out limit' if bo == 'unlimited' else f'Buttock tissue\nbottoms out at {bo}kN'
+        group_title = (
+            'Buttock tissue\nno bottoming out limit'
+            if bo == 'unlimited'
+            else f'Buttock tissue\nbottoms out at {bo}kN'
+        )
         ax.set_title(group_title, fontsize=11, fontweight='bold')
 
         if group_idx == 0:
@@ -337,8 +408,16 @@ def process_universal(output_dir):
             for j in range(n_cols):
                 if (i, j) in data_values:
                     kn = data_values[(i, j)]
-                    ax.text(j, i, f'{kn:.2f}', ha='center', va='center',
-                            fontsize=8, color=get_text_color(kn), fontweight='bold')
+                    ax.text(
+                        j,
+                        i,
+                        f'{kn:.2f}',
+                        ha='center',
+                        va='center',
+                        fontsize=8,
+                        color=get_text_color(kn),
+                        fontweight='bold',
+                    )
                 else:
                     ax.text(j, i, 'N/A', ha='center', va='center', fontsize=8, color='gray')
 
@@ -393,8 +472,16 @@ def process_csv(csv_path):
             if (dr, jl) in data:
                 kn = data[(dr, jl)]['kN']
                 peak_g = data[(dr, jl)]['peak_g']
-                ax.text(j, i, f'{kn:.2f}kN\n({peak_g:.0f}G)', ha='center', va='center',
-                        fontsize=9, color=get_text_color(kn), fontweight='bold')
+                ax.text(
+                    j,
+                    i,
+                    f'{kn:.2f}kN\n({peak_g:.0f}G)',
+                    ha='center',
+                    va='center',
+                    fontsize=9,
+                    color=get_text_color(kn),
+                    fontweight='bold',
+                )
             else:
                 ax.text(j, i, 'N/A', ha='center', va='center', fontsize=9, color='gray')
 
