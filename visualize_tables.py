@@ -67,8 +67,8 @@ def load_data(csv_path):
         data = list(reader)
 
     result = {}
-    bottom_out_force_kN = None
-    bottom_out_compression = None
+    buttocks_mode = None
+    buttocks_profile = None
 
     for entry in data:
         parts = entry['filename'].replace('.csv', '').split('-')
@@ -80,46 +80,55 @@ def load_data(csv_path):
             'peak_g': float(entry['base_accel_peak_g']),
         }
 
-        if bottom_out_force_kN is None and 'buttocks_bottom_out_force_kN' in entry:
-            bottom_out_force_kN = float(entry['buttocks_bottom_out_force_kN'])
-        if bottom_out_compression is None and 'buttocks_bottom_out_limit_mm' in entry:
-            bottom_out_compression = float(entry['buttocks_bottom_out_limit_mm'])
+        if buttocks_mode is None and 'buttocks_mode' in entry:
+            buttocks_mode = entry['buttocks_mode']
+        if buttocks_profile is None and 'buttocks_profile' in entry:
+            buttocks_profile = entry['buttocks_profile']
 
-    return result, bottom_out_force_kN, bottom_out_compression
+    return result, buttocks_mode, buttocks_profile
 
 
 def process_universal(output_dir):
-    """Process all CSV files and create a universal comparison table."""
+    """Process all CSV files and create a universal comparison table.
+
+    Batch folders are named {profile}-{mode_label} (e.g. sporty-loc, avg-uni).
+    Groups by mode (localized/uniform), with profiles as columns.
+    """
     from matplotlib.patches import Rectangle
 
+    valid_modes = {'loc', 'uni'}
     batch_dirs = [d for d in output_dir.iterdir() if d.is_dir()]
     configs_info = []
 
     for batch_dir in batch_dirs:
         name = batch_dir.name
-        parts = name.split('-')
-        if len(parts) == 2 and parts[0].isdigit():
-            stiffness = int(parts[0])
-            bottom_out = parts[1]
+        parts = name.rsplit('-', 1)
+        if len(parts) == 2 and parts[1] in valid_modes:
+            profile = parts[0]
+            mode = parts[1]
             csv_path = batch_dir / f'{name}.csv'
             if csv_path.exists():
-                configs_info.append((name, stiffness, bottom_out, csv_path))
+                configs_info.append((name, profile, mode, csv_path))
 
     if not configs_info:
         print('  No batch config folders found')
         return
 
-    def bottom_out_sort_key(bo):
-        return (0, 0) if bo == 'unlimited' else (1, int(bo))
+    # Ordered profiles and modes
+    preferred_profiles = ['sporty', 'avg', 'soft']
+    all_profiles = list(dict.fromkeys(c[1] for c in configs_info))
+    if all(p in all_profiles for p in preferred_profiles):
+        profiles = preferred_profiles
+    else:
+        profiles = sorted(all_profiles)
 
-    bottom_out_types = sorted({c[2] for c in configs_info}, key=bottom_out_sort_key)
+    modes = ['loc', 'uni']
+    mode_labels = {'loc': 'localized', 'uni': 'uniform'}
 
-    groups = []
-    for bo in bottom_out_types:
-        group_configs = sorted(
-            [(c[0], c[1]) for c in configs_info if c[2] == bo], key=lambda x: x[1]
-        )
-        groups.append((bo, group_configs))
+    # Build lookup: (mode, profile) -> config_name
+    config_lookup = {}
+    for name, profile, mode, _ in configs_info:
+        config_lookup[(mode, profile)] = name
 
     all_data = {}
     all_files = set()
@@ -150,7 +159,6 @@ def process_universal(output_dir):
     sorted_files = sorted(all_files, key=parse_filename)
     is_grid_mode = all(parse_filename(f)[0] == 0 for f in all_files)
 
-    # Grid mode requires multiple distinct drop rates (first value) to form a 2D grid
     if is_grid_mode:
         drop_rates = {parse_filename(f)[1] for f in all_files}
         if len(drop_rates) <= 1:
@@ -158,27 +166,18 @@ def process_universal(output_dir):
 
     print(f'  Mode: {"Grid" if is_grid_mode else "List"} ({len(sorted_files)} files)')
     n_rows = len(sorted_files)
+    n_cols = len(profiles)
 
-    # In list mode with exactly 2 groups, create a single merged table
-    if not is_grid_mode and len(groups) == 2:
-        # Get stiffness values (columns) - use first group's configs
-        stiffness_values = sorted({c[1] for c in configs_info})
-        n_cols = len(stiffness_values)
-
-        # Build lookup: (bottom_out, stiffness) -> config_name
-        config_lookup = {}
-        for name, stiffness, bottom_out, _ in configs_info:
-            config_lookup[(bottom_out, stiffness)] = name
-
+    # Split-cell table: left = localized, right = uniform, columns = profiles
+    if not is_grid_mode and len(modes) == 2:
         # Fixed dimensions (in inches)
-        cell_size = 0.55  # Each half-cell is square
-        gap_size = 0.25  # Gap between stiffness groups
-        left_margin = 1.5  # Fixed space for row labels
+        cell_size = 0.55
+        gap_size = 0.25
+        left_margin = 1.5
         right_margin = 0.3
-        top_margin = 0.8  # Space for two-line title
-        bottom_margin = 0.5  # Space for stiffness label
+        top_margin = 0.8
+        bottom_margin = 0.5
 
-        # Calculate figure size
         table_width = n_cols * (2 * cell_size) + (n_cols - 1) * gap_size
         table_height = n_rows * cell_size
         fig_width = left_margin + table_width + right_margin
@@ -186,14 +185,12 @@ def process_universal(output_dir):
 
         fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
-        # Set axes position to match fixed margins
         ax_left = left_margin / fig_width
         ax_bottom = bottom_margin / fig_height
         ax_width = table_width / fig_width
         ax_height = table_height / fig_height
         ax.set_position([ax_left, ax_bottom, ax_width, ax_height])
 
-        # Data coordinates: each column group is 2 units wide (1 per half), gaps between
         x_positions = []
         for j in range(n_cols):
             x_positions.append(j * (2 + gap_size / cell_size))
@@ -201,17 +198,15 @@ def process_universal(output_dir):
         ax.set_xlim(-1, x_positions[-1] + 1)
         ax.set_ylim(n_rows, 0)
 
-        # Draw split cells with colored backgrounds
         norm = plt.Normalize(vmin=VMIN, vmax=VMAX)
-        bo_left, bo_right = bottom_out_types[0], bottom_out_types[1]
+        mode_left, mode_right = modes[0], modes[1]
 
         for i, filename in enumerate(sorted_files):
-            for j, stiffness in enumerate(stiffness_values):
+            for j, profile in enumerate(profiles):
                 x = x_positions[j]
 
-                # Get values for both groups
-                left_config = config_lookup.get((bo_left, stiffness))
-                right_config = config_lookup.get((bo_right, stiffness))
+                left_config = config_lookup.get((mode_left, profile))
+                right_config = config_lookup.get((mode_right, profile))
 
                 left_kn, left_g = None, None
                 right_kn, right_g = None, None
@@ -222,21 +217,20 @@ def process_universal(output_dir):
                     right_kn = all_data[right_config][filename]['peak_T12L1_kN']
                     right_g = all_data[right_config][filename]['base_accel_peak_g']
 
-                # Draw left half (square)
+                # Draw left half
                 left_color = CMAP(norm(left_kn)) if left_kn is not None else (0.9, 0.9, 0.9, 1)
                 rect_left = Rectangle(
                     (x - 1, i), 1, 1, facecolor=left_color, edgecolor='white', linewidth=0.5
                 )
                 ax.add_patch(rect_left)
 
-                # Draw right half (square)
+                # Draw right half
                 right_color = CMAP(norm(right_kn)) if right_kn is not None else (0.9, 0.9, 0.9, 1)
                 rect_right = Rectangle(
                     (x, i), 1, 1, facecolor=right_color, edgecolor='white', linewidth=0.5
                 )
                 ax.add_patch(rect_right)
 
-                # Add text for left half: kN on line 1, (G) on line 2
                 if left_kn is not None:
                     text_color = get_text_color(left_kn)
                     ax.text(
@@ -263,7 +257,6 @@ def process_universal(output_dir):
                         x - 0.5, i + 0.5, 'N/A', ha='center', va='center', fontsize=7, color='gray'
                     )
 
-                # Add text for right half: kN on line 1, (G) on line 2
                 if right_kn is not None:
                     text_color = get_text_color(right_kn)
                     ax.text(
@@ -290,25 +283,21 @@ def process_universal(output_dir):
                         x + 0.5, i + 0.5, 'N/A', ha='center', va='center', fontsize=7, color='gray'
                     )
 
-        # Add stiffness labels below each column group
-        for j, stiffness in enumerate(stiffness_values):
+        # Profile labels below each column
+        for j, profile in enumerate(profiles):
             ax.text(
-                x_positions[j], n_rows + 0.15, str(stiffness), ha='center', va='top', fontsize=10
+                x_positions[j], n_rows + 0.15, profile, ha='center', va='top', fontsize=10
             )
 
-        # Add row labels to the left
+        # Row labels
         for i, filename in enumerate(sorted_files):
             ax.text(
                 -1.1, i + 0.5, filename.replace('.csv', ''), ha='right', va='center', fontsize=8
             )
 
-        # Center of table in figure coordinates
         table_center_x = ax_left + ax_width / 2
 
-        # Title (two lines)
-        left_label = 'unlimited' if bo_left == 'unlimited' else f'{bo_left} kN'
-        right_label = 'unlimited' if bo_right == 'unlimited' else f'{bo_right} kN'
-        title = f'Buttock bottoming out\n{left_label} (left) | {right_label} (right)'
+        title = f'Buttock mode comparison\n{mode_labels[mode_left]} (left) | {mode_labels[mode_right]} (right)'
         fig.text(
             table_center_x,
             1 - 0.3 / fig_height,
@@ -319,16 +308,14 @@ def process_universal(output_dir):
             fontweight='bold',
         )
 
-        # Bottom label
         fig.text(
             table_center_x,
             0.0 / fig_height,
-            'Buttock tissue stiffness (kN/m)',
+            'Buttock profile',
             ha='center',
             fontsize=10,
         )
 
-        # Remove all axes decorations
         for spine in ax.spines.values():
             spine.set_visible(False)
         ax.set_xticks([])
@@ -341,8 +328,14 @@ def process_universal(output_dir):
         plt.close()
         return
 
-    # Original grid mode or fallback for non-2-group cases
+    # Grid mode fallback: one subplot per mode
     from matplotlib.gridspec import GridSpec
+
+    groups = []
+    for mode in modes:
+        group_configs = [(config_lookup[(mode, p)], p) for p in profiles if (mode, p) in config_lookup]
+        if group_configs:
+            groups.append((mode, group_configs))
 
     n_groups = len(groups)
     group_sizes = [len(g[1]) for g in groups]
@@ -372,11 +365,11 @@ def process_universal(output_dir):
 
     col_idx = 0
 
-    for group_idx, (bo, group_configs) in enumerate(groups):
-        n_cols = len(group_configs)
-        ax = fig.add_subplot(gs[0, col_idx : col_idx + n_cols])
+    for group_idx, (mode, group_configs) in enumerate(groups):
+        n_group_cols = len(group_configs)
+        ax = fig.add_subplot(gs[0, col_idx : col_idx + n_group_cols])
 
-        matrix = np.full((n_rows, n_cols), np.nan)
+        matrix = np.full((n_rows, n_group_cols), np.nan)
         data_values = {}
 
         for i, filename in enumerate(sorted_files):
@@ -388,15 +381,10 @@ def process_universal(output_dir):
 
         ax.imshow(matrix, cmap=CMAP, vmin=VMIN, vmax=VMAX, aspect='auto')
 
-        ax.set_xticks(range(n_cols))
-        ax.set_xticklabels([str(stiffness) for _, stiffness in group_configs], fontsize=10)
+        ax.set_xticks(range(n_group_cols))
+        ax.set_xticklabels([profile for _, profile in group_configs], fontsize=10)
 
-        group_title = (
-            'Buttock tissue\nno bottoming out limit'
-            if bo == 'unlimited'
-            else f'Buttock tissue\nbottoms out at {bo}kN'
-        )
-        ax.set_title(group_title, fontsize=11, fontweight='bold')
+        ax.set_title(f'Buttock mode: {mode_labels.get(mode, mode)}', fontsize=11, fontweight='bold')
 
         if group_idx == 0:
             ax.set_yticks(range(n_rows))
@@ -405,7 +393,7 @@ def process_universal(output_dir):
             ax.set_yticks([])
 
         for i in range(n_rows):
-            for j in range(n_cols):
+            for j in range(n_group_cols):
                 if (i, j) in data_values:
                     kn = data_values[(i, j)]
                     ax.text(
@@ -421,7 +409,7 @@ def process_universal(output_dir):
                 else:
                     ax.text(j, i, 'N/A', ha='center', va='center', fontsize=8, color='gray')
 
-        col_idx += n_cols + (1 if group_idx < n_groups - 1 else 0)
+        col_idx += n_group_cols + (1 if group_idx < n_groups - 1 else 0)
 
     output_path = output_dir / f'{output_dir.name}.png'
     plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
@@ -432,7 +420,7 @@ def process_universal(output_dir):
 def process_csv(csv_path):
     """Process a single CSV file and generate a PNG."""
     output_path = csv_path.with_suffix('.png')
-    data, bottom_out_force_kN, bottom_out_compression_mm = load_data(csv_path)
+    data, buttocks_mode, buttocks_profile = load_data(csv_path)
 
     drop_rates = sorted({k[0] for k in data})
     jerk_limits = sorted({k[1] for k in data})
@@ -455,15 +443,12 @@ def process_csv(csv_path):
     ax.set_xlabel('Jerk Limit (m/s³)', fontsize=12)
     ax.set_ylabel('Drop Rate (m/s)', fontsize=12)
 
-    if bottom_out_force_kN is not None and bottom_out_force_kN >= 9999:
-        title = 'Buttock tissue\nno bottoming out limit'
-    elif bottom_out_force_kN is not None:
-        if bottom_out_compression_mm is not None:
-            title = f'Buttock tissue\nbottoms out at {bottom_out_force_kN:.0f}kN (~{bottom_out_compression_mm:.0f}mm compression)'
-        else:
-            title = f'Buttock tissue\nbottoms out at {bottom_out_force_kN:.0f}kN'
-    else:
-        title = 'Buttock tissue'
+    title_parts = ['Buttock tissue']
+    if buttocks_mode:
+        title_parts.append(f'mode={buttocks_mode}')
+    if buttocks_profile:
+        title_parts.append(f'profile={buttocks_profile}')
+    title = title_parts[0] + '\n' + ', '.join(title_parts[1:]) if len(title_parts) > 1 else title_parts[0]
 
     fig.text(0.5, 0.92, title, ha='center', va='center', fontsize=14, fontweight='bold')
 
