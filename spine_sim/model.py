@@ -36,11 +36,19 @@ class SpineModel:
     # Global disc model parameters
     tension_k_mult: float
 
-    # Buttocks bilinear contact parameters (gap removed; always 0)
+    # Buttocks model
+    # - uniform: linear spring + compression-only damping, no bottom-out.
+    # - localized: linear spring + barrier hardening driven by remaining apex thickness.
+    buttocks_mode: str
+    buttocks_active_profile: str
+    buttocks_apex_thickness_m: float  # Sonenblum seated apex thickness (able-bodied)
     buttocks_k1_n_per_m: float
-    buttocks_k2_n_per_m: float
-    buttocks_bottom_out_force_n: float
+    buttocks_k2_mult: float  # barrier gain multiplier: k_barrier = k2_mult * k1
     buttocks_c_ns_per_m: float
+
+    # Reference compression at "idle sitting" equilibrium for localized mode.
+    # If NaN, hardening is disabled (used during static equilibrium solves).
+    buttocks_x_idle_m: float
 
     # Kemper scaling and stability knobs
     kemper_normalize_to_eps_per_s: float
@@ -53,14 +61,8 @@ class SpineModel:
     def n_elems(self) -> int:
         return len(self.element_names)
 
-    def buttocks_bottom_out_compression_m(self) -> float:
-        """
-        Compute the compression at which the buttocks bilinear spring changes from k1 to k2,
-        based on the configured bottom-out force threshold.
-        """
-        if self.buttocks_bottom_out_force_n <= 0.0:
-            return 0.0
-        return self.buttocks_bottom_out_force_n / self.buttocks_k1_n_per_m
+    def buttocks_barrier_k_n_per_m(self) -> float:
+        return float(self.buttocks_k2_mult) * float(self.buttocks_k1_n_per_m)
 
 
 @dataclass
@@ -119,49 +121,73 @@ def _buttocks_force_and_partials(
     """
     Buttocks element (base-to-pelvis) with:
       - compression-only contact (gap removed; always 0)
-      - bilinear spring with bottom-out specified by force threshold
-      - damping: contact-only, active for both closing and opening. Total contact
-        force is clamped to be non-negative (contact cannot "pull" in tension).
+      - two modes:
+          * uniform: linear spring + compression-only damping, no bottom-out.
+          * localized: linear spring + barrier hardening driven by remaining seated apex thickness.
+      - damping Option A: compression-only (closing-speed), so it does not "pull" during rebound.
+
+    Localized hardening:
+      - h_idle = model.buttocks_apex_thickness_m (Sonenblum seated apex thickness).
+      - x_idle is set by caller once an initial seated equilibrium is known.
+      - x_extra = max(x - x_idle, 0).
+      - remaining thickness h = h_idle - x_extra.
+      - hardening term: F_hard = k_barrier * x_extra^2 / max(h, eps).
 
     Returns:
       F, dF_dext, dF_drelv, compression_x_m
     """
     # compression x = max(-ext, 0)
     x = max(-float(ext_m), 0.0)
-    in_contact = x > 0.0
-
-    if not in_contact:
+    if x <= 0.0:
         return 0.0, 0.0, 0.0, 0.0
 
     k1 = float(model.buttocks_k1_n_per_m)
-    k2 = float(model.buttocks_k2_n_per_m)
-    F0 = float(model.buttocks_bottom_out_force_n)
 
-    # Bottom-out compression inferred from bottom-out force threshold
-    x0 = 0.0
-    if F0 > 0.0:
-        x0 = F0 / k1
+    # Spring: linear baseline
+    f_s = k1 * x
+    dF_dx = k1
 
-    # Bilinear spring (hard kink)
-    if F0 > 0.0 and x > x0:
-        f_s = F0 + k2 * (x - x0)
-        dF_dx = k2
+    mode = str(model.buttocks_mode).strip().lower()
+    if mode == 'localized':
+        # If x_idle is not yet defined (NaN), disable hardening.
+        x_idle = float(model.buttocks_x_idle_m)
+        if np.isfinite(x_idle) and x > x_idle:
+            x_extra = x - x_idle
+            h_idle = float(model.buttocks_apex_thickness_m)
+
+            # Numerical epsilon only (not a biomechanical "minimum thickness").
+            eps = 1e-6
+            h = h_idle - x_extra
+            h_eff = h if h > eps else eps
+
+            k_bar = float(model.buttocks_barrier_k_n_per_m())
+            f_hard = k_bar * (x_extra * x_extra) / h_eff
+            f_s += f_hard
+
+            if h > eps:
+                # df/dx = k_bar * (2*x_extra/h + x_extra^2/h^2)
+                dF_dx += k_bar * ((2.0 * x_extra / h_eff) + ((x_extra * x_extra) / (h_eff * h_eff)))
+            else:
+                # h_eff clamped to eps => f_hard = k_bar*x_extra^2/eps
+                dF_dx += k_bar * (2.0 * x_extra / h_eff)
+
+    elif mode == 'uniform':
+        # No hardening.
+        pass
     else:
-        f_s = k1 * x
-        dF_dx = k1
+        raise ValueError(f'Unknown buttocks_mode: {model.buttocks_mode}')
 
-    # Damping: active in contact for both closing and opening
+    # Damping Option A: compression-only (closing speed)
+    # relv is pelvis velocity relative to base; if relv < 0, contact is closing.
     c = float(model.buttocks_c_ns_per_m)
-    f_d = (-c * float(relv_mps)) if (c > 0.0) else 0.0
+    closing_speed = max(-float(relv_mps), 0.0)
+    f_d = (c * closing_speed) if c > 0.0 else 0.0
+
+    # d(closing_speed)/d(relv) = -1 if relv < 0 else 0
+    dF_drelv = -c if (c > 0.0 and float(relv_mps) < 0.0) else 0.0
 
     f = f_s + f_d
-
-    # Contact cannot pull
-    if f <= 0.0:
-        return 0.0, 0.0, 0.0, x
-
     dF_dext = -dF_dx
-    dF_drelv = -c if c > 0.0 else 0.0
     return f, dF_dext, dF_drelv, x
 
 
@@ -292,6 +318,10 @@ def initial_state_static(model: SpineModel, base_accel_g0: float) -> tuple[np.nd
     k_comp = model.k0_elem_n_per_m.copy()
     k_comp[0] = 0.0  # buttocks handled separately
 
+    # Disable localized hardening during static solve (we don't yet know x_idle).
+    butt_x_idle_prev = float(model.buttocks_x_idle_m)
+    model.buttocks_x_idle_m = float('nan')
+
     for _ in range(80):
         f_int, _elem, dfdy, _eps_raw, _x = _assemble_forces_and_tangent(
             model,
@@ -314,6 +344,7 @@ def initial_state_static(model: SpineModel, base_accel_g0: float) -> tuple[np.nd
         if float(np.linalg.norm(dy)) < 1e-10:
             break
 
+    model.buttocks_x_idle_m = butt_x_idle_prev
     return y, v
 
 
@@ -329,6 +360,9 @@ def newmark_nonlinear(
 ) -> SimulationResult:
     """
     Nonlinear Newmark-beta integration with per-timestep frozen disc stiffness.
+
+    Note: caller is responsible for setting model.buttocks_x_idle_m appropriately
+    (e.g. from a seated static equilibrium) when using localized mode.
     """
     n = model.size()
     ne = model.n_elems()

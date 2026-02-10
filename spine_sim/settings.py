@@ -81,10 +81,13 @@ def validate_config(cfg: dict) -> None:
     req_float(cfg, ['drop', 'peak_threshold_g'])
     req_float(cfg, ['drop', 'freefall_threshold_g'])
 
-    req_float(cfg, ['buttock', 'k1_n_per_m'])
-    req_float(cfg, ['buttock', 'c_ns_per_m'])
-    req_float(cfg, ['buttock', 'bottom_out_force_kN'])
-    req_float(cfg, ['buttock', 'k2_n_per_m'])
+    # Buttocks model (mode/profile are supplied at runtime via CLI).
+    req_float(cfg, ['buttock', 'k2_mult'])
+
+    for p in ('sporty', 'avg', 'soft'):
+        req_float(cfg, ['buttock', 'profiles', p, 'apex_thickness_mm'])
+        req_float(cfg, ['buttock', 'profiles', p, 'k1_n_per_m'])
+        req_float(cfg, ['buttock', 'profiles', p, 'c_ns_per_m'])
 
     req_float(cfg, ['spine', 'disc_height_mm'])
     req_float(cfg, ['spine', 'cervical_disc_height_single_mm'])

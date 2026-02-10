@@ -4,19 +4,7 @@ import argparse
 import subprocess
 
 from spine_sim.drop_commands import run_simulate_drop
-
-
-# Batch mode configurations
-BATCH_STIFFNESS_DAMPING = [
-    (305000, 5250, '305'),
-    (85200, 1750, '85'),
-    (180500, 3130, '180'),
-]
-
-BATCH_BOTTOM_OUT = [
-    (7.0, '7'),
-    (9999.0, 'unlimited'),
-]
+from spine_sim.settings import read_config
 
 
 def main() -> None:
@@ -26,33 +14,63 @@ def main() -> None:
         help='Subfolder in input/ to process (outputs to output/<subfolder>)',
     )
     parser.add_argument(
+        '--mode',
+        choices=['localized', 'uniform'],
+        help='Buttocks mode for a single run (required unless --batch).',
+    )
+    parser.add_argument(
+        '--profile',
+        choices=['sporty', 'avg', 'soft'],
+        help='Buttocks profile for a single run (required unless --batch).',
+    )
+    parser.add_argument(
         '--batch',
         action='store_true',
-        help='Run batch mode with all buttock parameter combinations',
+        help='Run batch mode (always runs BOTH modes and ALL profiles).',
     )
     args = parser.parse_args()
 
+    config = read_config()
+
     if args.batch:
-        for k1, c, stiff_label in BATCH_STIFFNESS_DAMPING:
-            for force, force_label in BATCH_BOTTOM_OUT:
-                batch_name = f'{stiff_label}-{force_label}'
+        profiles = list(config['buttock']['profiles'].keys())
+
+        preferred = ['sporty', 'avg', 'soft']
+        if all(p in profiles for p in preferred):
+            profiles = preferred
+        else:
+            profiles = sorted(profiles)
+
+        modes = ['localized', 'uniform']
+
+        for profile in profiles:
+            for mode in modes:
+                mode_label = 'loc' if mode == 'localized' else 'uni'
+                batch_name = f'{profile}-{mode_label}'
                 output_filename = f'{batch_name}.csv'
                 print(f'\n{"=" * 60}')
-                print(f'BATCH: k1={k1}, c={c}, bottom_out={force} -> {batch_name}/')
+                print(f'BATCH: profile={profile}, mode={mode} -> {batch_name}/')
                 print(f'{"=" * 60}')
                 run_simulate_drop(
                     echo=print,
-                    buttock_override={
-                        'k1_n_per_m': k1,
-                        'c_ns_per_m': c,
-                        'bottom_out_force_kN': force,
-                    },
-                    output_filename=output_filename,
                     subfolder=args.subfolder,
                     output_subfolder=batch_name,
+                    output_filename=output_filename,
+                    buttocks_mode=mode,
+                    buttocks_profile=profile,
                 )
     else:
-        run_simulate_drop(echo=print, subfolder=args.subfolder)
+        if not args.mode:
+            raise SystemExit('--mode is required unless --batch.')
+        if not args.profile:
+            raise SystemExit('--profile is required unless --batch.')
+
+        run_simulate_drop(
+            echo=print,
+            subfolder=args.subfolder,
+            buttocks_mode=args.mode,
+            buttocks_profile=args.profile,
+        )
 
     subprocess.run(['./visualize_tables.py', args.subfolder])
 

@@ -18,10 +18,24 @@
     "freefall_threshold_g": -0.85
   },
   "buttock": {
-    "k1_n_per_m": 180500.0,
-    "c_ns_per_m": 3130.0,
-    "bottom_out_force_kN": 7.0,
-    "k2_n_per_m": 5000000.0
+    "k2_mult": 1.0,
+    "profiles": {
+      "sporty": {
+        "apex_thickness_mm": 13.4,
+        "k1_n_per_m": 305000.0,
+        "c_ns_per_m": 5250.0
+      },
+      "avg": {
+        "apex_thickness_mm": 23.4,
+        "k1_n_per_m": 180500.0,
+        "c_ns_per_m": 3130.0
+      },
+      "soft": {
+        "apex_thickness_mm": 26.0,
+        "k1_n_per_m": 85200.0,
+        "c_ns_per_m": 1750.0
+      }
+    }
   },
   "spine": {
     "disc_height_mm": 11.3,

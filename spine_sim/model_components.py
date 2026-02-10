@@ -41,23 +41,30 @@ def _series_equivalent_damping(c_list_ns_per_m: list[float]) -> float:
     return 1.0 / inv
 
 
-def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
+def build_spine_model(
+    mass_map: dict,
+    config: dict,
+    *,
+    buttocks_mode: str,
+    buttocks_profile: str,
+) -> SpineModel:
     """
     Build the 1D axial chain model:
 
       [Base] -- buttocks -- pelvis -- L5 -- ... -- T1 -- HEAD
 
-    Baseline stiffness:
-      - Thoraco-lumbar: Kitazaki & Griffin (1997), Table 4 axial stiffness by level.
-      - Cervical simplification: HEAD-T1 baseline stiffness is the *series equivalent*
-        of Kitazaki Table 4 cervical joints Head-C1 ... C7-T1.
-
-    Rate dependence:
-      - Kemper multiplier is applied in compression as a multiplicative factor on baseline k0.
-      - Strain-rate uses element-specific effective disc heights.
-        For HEAD-T1 we use the cervical stack height (N * cervical_disc_height_single_mm), where
-        cervical_disc_height_single_mm is explicitly the height of ONE cervical disc.
+    Buttocks:
+      - mode is supplied at runtime (CLI), not in config.json.
+      - profile is supplied at runtime (CLI), not in config.json.
     """
+    buttocks_mode = str(buttocks_mode).strip().lower()
+    if buttocks_mode not in ('localized', 'uniform'):
+        raise ValueError('buttocks_mode must be "localized" or "uniform".')
+
+    buttocks_profile = str(buttocks_profile).strip()
+    if buttocks_profile not in ('sporty', 'avg', 'soft'):
+        raise ValueError('buttocks_profile must be sporty/avg/soft.')
+
     disc_height_mm = float(req_float(config, ['spine', 'disc_height_mm']))
     if disc_height_mm <= 0.0:
         raise ValueError('spine.disc_height_mm must be > 0.')
@@ -142,17 +149,16 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
         'L5-S1': 1.47e6,
     }
 
-    # Kitazaki & Griffin (1997) Table 4 cervical chain (N/m):
-    # Head-C1, C1-C2, ..., C7-T1.
+    # Kitazaki & Griffin (1997) Table 4 cervical chain (N/m): Head-C1 ... C7-T1.
     k_kitazaki_cervical_chain = [
-        0.550e6,  # Head-C1
-        0.300e6,  # C1-C2
-        0.700e6,  # C2-C3
-        0.760e6,  # C3-C4
-        0.794e6,  # C4-C5
-        0.967e6,  # C5-C6
-        1.014e6,  # C6-C7
-        1.334e6,  # C7-T1
+        0.550e6,
+        0.300e6,
+        0.700e6,
+        0.760e6,
+        0.794e6,
+        0.967e6,
+        1.014e6,
+        1.334e6,
     ]
     neck_chain_count = len(k_kitazaki_cervical_chain)
     k_head_t1_eq = _series_equivalent_stiffness(k_kitazaki_cervical_chain)
@@ -179,8 +185,6 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
         c_elem[neck_elem_idx] = 0.0
 
     # Per-element effective height for strain-rate:
-    # - most elements use the single thoraco-lumbar disc height from config (disc_height_mm).
-    # - HEAD-T1 uses a stacked height: N * cervical_disc_height_single_mm.
     disc_height_m_per_elem = np.zeros(len(element_names), dtype=float)
     disc_height_m_per_elem[0] = 0.0
     disc_height_m_per_elem[1:] = float(disc_height_mm) / 1000.0
@@ -188,20 +192,22 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
         float(neck_chain_count) * float(cervical_disc_height_single_mm) / 1000.0
     )
 
-    # Buttocks parameters
-    k1 = float(req_float(config, ['buttock', 'k1_n_per_m']))
-    c_butt = float(req_float(config, ['buttock', 'c_ns_per_m']))
-    bottom_out_force_kN = float(req_float(config, ['buttock', 'bottom_out_force_kN']))
-    k2 = float(req_float(config, ['buttock', 'k2_n_per_m']))
+    # Buttocks profile parameters (k1/c from Van Toen; apex thickness from Sonenblum).
+    apex_thickness_mm = float(
+        req_float(config, ['buttock', 'profiles', buttocks_profile, 'apex_thickness_mm'])
+    )
+    k1 = float(req_float(config, ['buttock', 'profiles', buttocks_profile, 'k1_n_per_m']))
+    c_butt = float(req_float(config, ['buttock', 'profiles', buttocks_profile, 'c_ns_per_m']))
+    k2_mult = float(req_float(config, ['buttock', 'k2_mult']))
 
+    if apex_thickness_mm <= 0.0:
+        raise ValueError('buttock.profiles.<name>.apex_thickness_mm must be > 0.')
     if k1 <= 0.0:
-        raise ValueError('buttock.k1_n_per_m must be > 0.')
-    if k2 <= 0.0:
-        raise ValueError('buttock.k2_n_per_m must be > 0.')
-    if bottom_out_force_kN < 0.0:
-        raise ValueError('buttock.bottom_out_force_kN must be >= 0.')
+        raise ValueError('buttock.profiles.<name>.k1_n_per_m must be > 0.')
     if c_butt < 0.0:
-        raise ValueError('buttock.c_ns_per_m must be >= 0.')
+        raise ValueError('buttock.profiles.<name>.c_ns_per_m must be >= 0.')
+    if k2_mult <= 0.0:
+        raise ValueError('buttock.k2_mult must be > 0.')
 
     return SpineModel(
         node_names=node_names,
@@ -211,10 +217,13 @@ def build_spine_model(mass_map: dict, config: dict) -> SpineModel:
         c_elem_ns_per_m=c_elem,
         disc_height_m_per_elem=disc_height_m_per_elem,
         tension_k_mult=tension_k_mult,
+        buttocks_mode=buttocks_mode,
+        buttocks_active_profile=buttocks_profile,
+        buttocks_apex_thickness_m=float(apex_thickness_mm) / 1000.0,
         buttocks_k1_n_per_m=k1,
-        buttocks_k2_n_per_m=k2,
-        buttocks_bottom_out_force_n=float(bottom_out_force_kN) * 1000.0,
+        buttocks_k2_mult=k2_mult,
         buttocks_c_ns_per_m=c_butt,
+        buttocks_x_idle_m=float('nan'),
         kemper_normalize_to_eps_per_s=float(
             req_float(config, ['spine', 'kemper', 'normalize_to_eps_per_s'])
         ),

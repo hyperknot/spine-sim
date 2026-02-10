@@ -63,7 +63,23 @@ def _interpolate_to_internal_dt(
     return t, a
 
 
+def _set_buttocks_idle_from_state(model, y0: np.ndarray) -> float:
+    """
+    Set buttocks idle compression reference from the initial state.
+
+    For localized mode, we want barrier hardening to engage only for extra compression
+    beyond a seated equilibrium. Therefore, x_idle is set once per simulation run.
+    """
+    pelvis_idx = model.node_names.index('pelvis')
+    x_idle = float(np.maximum(-float(y0[pelvis_idx]), 0.0))
+    model.buttocks_x_idle_m = x_idle
+    return x_idle
+
+
 def run_simulate_drop(
+    *,
+    buttocks_mode: str,
+    buttocks_profile: str,
     echo=print,
     buttock_override: dict | None = None,
     output_filename: str | None = None,
@@ -72,7 +88,7 @@ def run_simulate_drop(
 ) -> list[dict]:
     config = read_config()
 
-    # Apply buttock overrides if provided
+    # Apply buttock overrides if provided (advanced use; not needed for normal CLI operation).
     if buttock_override:
         if 'buttock' not in config:
             config['buttock'] = {}
@@ -93,19 +109,23 @@ def run_simulate_drop(
         echo=echo,
     )
 
-    model = build_spine_model(mass_map, config)
-
-    # Debug buttocks bottom-out point (computed from force threshold)
-    x0_m = model.buttocks_bottom_out_compression_m()
-    x0_mm = x0_m * 1000.0
-    echo('Buttocks bilinear model:')
-    echo(f'  k1 = {model.buttocks_k1_n_per_m:.3g} N/m')
-    echo(f'  k2 = {model.buttocks_k2_n_per_m:.3g} N/m')
-    echo(
-        f'  c  = {model.buttocks_c_ns_per_m:.3g} Ns/m (contact-only, both signs, clamped nonnegative)'
+    model = build_spine_model(
+        mass_map,
+        config,
+        buttocks_mode=buttocks_mode,
+        buttocks_profile=buttocks_profile,
     )
-    echo(f'  bottom_out_force = {model.buttocks_bottom_out_force_n / 1000.0:.3f} kN')
-    echo(f'  implied bottom_out_compression = {x0_mm:.3f} mm')
+
+    echo('Buttocks model:')
+    echo(f'  mode = {model.buttocks_mode}')
+    echo(f'  profile = {model.buttocks_active_profile}')
+    echo(
+        f'  apex_thickness (Sonenblum, seated) = {model.buttocks_apex_thickness_m * 1000.0:.3f} mm'
+    )
+    echo(f'  k1 = {model.buttocks_k1_n_per_m:.3g} N/m (Van Toen effective)')
+    echo(f'  c  = {model.buttocks_c_ns_per_m:.3g} Ns/m (compression-only damping)')
+    echo(f'  k2_mult = {model.buttocks_k2_mult:.3g} (barrier gain multiplier on k1)')
+    echo(f'  k_barrier = {model.buttocks_barrier_k_n_per_m():.3g} N/m')
 
     # Spine config debug
     neck_elem_idx = model.element_names.index('HEAD-T1')
@@ -113,7 +133,6 @@ def run_simulate_drop(
     neck_c = float(model.c_elem_ns_per_m[neck_elem_idx])
     neck_h_mm = float(model.disc_height_m_per_elem[neck_elem_idx] * 1000.0)
 
-    # For reference, the configured thoraco-lumbar disc height (most elements)
     disc_height_mm = float(req_float(config, ['spine', 'disc_height_mm']))
 
     echo('Spine model:')
@@ -146,27 +165,28 @@ def run_simulate_drop(
         inputs_dir = INPUT_BASE
         out_dir = OUTPUT_BASE
 
-    # In batch mode, put outputs in a subfolder named after the output file
     if output_subfolder:
         out_dir = out_dir / output_subfolder
 
     pattern = INPUT_PATTERN
 
-    # Determine config filename (matches output CSV name)
+    # Save config to output folder, but include runtime mode/profile so caching is correct.
+    config_to_save = json.loads(json.dumps(config))
+    config_to_save.setdefault('runtime', {})['buttocks_mode'] = str(buttocks_mode).strip().lower()
+    config_to_save.setdefault('runtime', {})['buttocks_profile'] = str(buttocks_profile).strip()
+
     config_basename = output_filename.replace('.csv', '.json') if output_filename else 'config.json'
     out_config_path = out_dir / config_basename
 
-    # Check if output already exists with same config AND csv exists
     csv_path = out_dir / (output_filename or 'summary.csv')
     if out_config_path.exists():
         with open(out_config_path, encoding='utf-8') as f:
             existing_config = json.load(f)
-        if existing_config == config and csv_path.exists():
+        if existing_config == config_to_save and csv_path.exists():
             echo(
                 f'Skipping {subfolder or "output"}/{config_basename}: config unchanged and csv exists'
             )
             return []
-        # Config changed OR csv missing - remove old output files and regenerate
         echo(f'Config changed or csv missing for {config_basename}, regenerating')
         if csv_path.exists():
             csv_path.unlink()
@@ -178,9 +198,8 @@ def run_simulate_drop(
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save config to output folder
     with open(out_config_path, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
+        json.dump(config_to_save, f, indent=2)
 
     summary: list[dict] = []
 
@@ -207,32 +226,33 @@ def run_simulate_drop(
             freefall_threshold_g=float(req_float(config, ['drop', 'freefall_threshold_g'])),
         )
 
+        t = np.asarray(t_in, dtype=float)
+        a_in_g = np.asarray(a_in_g, dtype=float)
+
         t, a_g = _interpolate_to_internal_dt(
-            np.asarray(t_in, dtype=float),
-            np.asarray(a_in_g, dtype=float),
+            t,
+            a_in_g,
             dt_internal_s=dt_internal_s,
             duration_s=duration_s,
         )
 
-        y0 = np.zeros(model.size(), dtype=float)
-        v0 = np.zeros(model.size(), dtype=float)
+        # Always start from static equilibrium under gravity (seated initial condition).
+        y0, v0 = initial_state_static(model, base_accel_g0=0.0)
 
         run_dir = out_dir / fpath.stem
         if run_dir.exists():
             shutil.rmtree(run_dir)
         run_dir.mkdir(parents=True)
 
-        # Flat-style: gravity settle at internal dt
+        # Optional gravity-settling (flat-style)
         if info['style'] == 'flat' and settle_ms > 0.0:
             t_settle = np.arange(
                 0.0, settle_ms / 1000.0 + dt_internal_s, dt_internal_s, dtype=float
             )
             a_settle = np.zeros_like(t_settle)
 
-            # Start from static equilibrium guess (optional but helps)
-            y_stat, v_stat = initial_state_static(model, base_accel_g0=0.0)
-            y0 = y_stat
-            v0 = v_stat
+            # During settling, keep localized hardening disabled (x_idle undefined).
+            model.buttocks_x_idle_m = float('nan')
 
             sim_settle = newmark_nonlinear(
                 model,
@@ -255,6 +275,10 @@ def run_simulate_drop(
             )
 
             y0, v0 = sim_settle.y[-1].copy(), sim_settle.v[-1].copy()
+
+        # Set x_idle reference from the actual initial state for the main sim.
+        x_idle_m = _set_buttocks_idle_from_state(model, y0)
+        echo(f'  buttocks_x_idle (from initial state) = {x_idle_m * 1000.0:.3f} mm')
 
         sim = newmark_nonlinear(
             model,
@@ -280,14 +304,20 @@ def run_simulate_drop(
         max_pelvis_compression_mm = -float(np.min(sim.y[:, pelvis_idx]) * 1000.0)
         max_spine_shortening_mm = max_head_compression_mm - max_pelvis_compression_mm
 
-        # Buttocks bottom-out metrics (computed from force threshold -> implied displacement)
-        x0_mm = model.buttocks_bottom_out_compression_m() * 1000.0
+        # Buttocks diagnostics
         y_pelvis_m = sim.y[:, pelvis_idx]
         butt_comp_m = np.maximum(-y_pelvis_m, 0.0)
         butt_comp_max_mm = float(np.max(butt_comp_m) * 1000.0)
-        butt_bottomed_out = bool(
-            (model.buttocks_bottom_out_force_n > 0.0) and (butt_comp_max_mm > x0_mm)
-        )
+
+        x_extra_m = np.maximum(butt_comp_m - x_idle_m, 0.0)
+        x_extra_max_mm = float(np.max(x_extra_m) * 1000.0)
+
+        if str(model.buttocks_mode).lower() == 'localized':
+            h_idle_m = float(model.buttocks_apex_thickness_m)
+            h_remain_m = h_idle_m - x_extra_m
+            h_remain_min_mm = float(np.min(h_remain_m) * 1000.0)
+        else:
+            h_remain_min_mm = float('nan')
 
         # Strain-rate warnings summary
         eps_smooth_max = float(np.max(sim.strain_rate_per_s))
@@ -365,10 +395,10 @@ def run_simulate_drop(
         echo(f'  Peak buttocks: {peak_butt_kN:.2f} kN')
         echo(f'  Peak T12-L1: {peak_t12_kN:.2f} kN @ {t_peak_ms:.1f} ms')
         echo(f'  Spine shortening: {max_spine_shortening_mm:.1f} mm')
-        echo(f'  Buttocks implied bottom-out compression: {x0_mm:.2f} mm')
-        echo(
-            f'  Buttocks max compression: {butt_comp_max_mm:.2f} mm (bottomed_out={butt_bottomed_out})'
-        )
+        echo(f'  Buttocks max compression: {butt_comp_max_mm:.2f} mm')
+        echo(f'  Buttocks max extra compression (beyond idle): {x_extra_max_mm:.2f} mm')
+        if str(model.buttocks_mode).lower() == 'localized':
+            echo(f'  Buttocks remaining apex thickness min: {h_remain_min_mm:.2f} mm')
         echo(f'  max_eps_any: {eps_smooth_max:.2f} 1/s')
 
         summary.append(
@@ -378,11 +408,16 @@ def run_simulate_drop(
                 'peak_T12L1_kN': peak_t12_kN,
                 'time_to_peak_T12L1_ms': t_peak_ms,
                 'peak_buttocks_kN': peak_butt_kN,
+                'buttocks_mode': model.buttocks_mode,
+                'buttocks_profile': model.buttocks_active_profile,
+                'buttocks_apex_thickness_mm': model.buttocks_apex_thickness_m * 1000.0,
                 'buttocks_k1_n_per_m': model.buttocks_k1_n_per_m,
-                'buttocks_bottom_out_force_kN': model.buttocks_bottom_out_force_n / 1000.0,
-                'buttocks_bottom_out_limit_mm': round(x0_mm, 3),
+                'buttocks_k2_mult': model.buttocks_k2_mult,
+                'buttocks_c_ns_per_m': model.buttocks_c_ns_per_m,
+                'buttocks_x_idle_mm': x_idle_m * 1000.0,
                 'buttocks_max_compression_reached_mm': butt_comp_max_mm,
-                'buttocks_bottomed_out': butt_bottomed_out,
+                'buttocks_max_extra_compression_mm': x_extra_max_mm,
+                'buttocks_min_remaining_apex_thickness_mm': h_remain_min_mm,
             }
         )
 
@@ -394,11 +429,16 @@ def run_simulate_drop(
         'peak_T12L1_kN',
         'time_to_peak_T12L1_ms',
         'peak_buttocks_kN',
+        'buttocks_mode',
+        'buttocks_profile',
+        'buttocks_apex_thickness_mm',
         'buttocks_k1_n_per_m',
-        'buttocks_bottom_out_force_kN',
-        'buttocks_bottom_out_limit_mm',
+        'buttocks_k2_mult',
+        'buttocks_c_ns_per_m',
+        'buttocks_x_idle_mm',
         'buttocks_max_compression_reached_mm',
-        'buttocks_bottomed_out',
+        'buttocks_max_extra_compression_mm',
+        'buttocks_min_remaining_apex_thickness_mm',
     ]
     with open(summary_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
