@@ -15,6 +15,7 @@ Layout options:
 """
 
 import csv
+import re
 from pathlib import Path
 
 import click
@@ -31,6 +32,11 @@ VMAX = 14.0
 PROFILES = ['sporty', 'avg', 'soft']
 MODES = ['uni', 'loc']
 MODE_LABELS = {'loc': 'localized', 'uni': 'uniform'}
+
+
+def natural_sort_key(s):
+    """Generate a key for natural sorting (numbers sorted numerically)."""
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r'(\d+)', s)]
 
 
 def create_colormap():
@@ -101,7 +107,7 @@ def collect_scenario_data(scenario_dir: Path):
                     'base_accel_peak_g': float(entry['base_accel_peak_g']),
                 }
 
-    return all_data, sorted(all_filenames), available_combos
+    return all_data, sorted(all_filenames, key=natural_sort_key), available_combos
 
 
 def render_table(scenario_dir: Path, group_by: str = 'mode'):
