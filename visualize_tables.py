@@ -122,8 +122,8 @@ def process_universal(output_dir):
     else:
         profiles = sorted(all_profiles)
 
-    modes = ['loc', 'uni']
-    mode_labels = {'loc': 'localized', 'uni': 'uniform'}
+    modes = ['uni', 'loc']
+    mode_labels = {'loc': 'localised', 'uni': 'uniform'}
 
     # Build lookup: (mode, profile) -> config_name
     config_lookup = {}
