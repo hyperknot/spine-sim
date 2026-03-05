@@ -46,8 +46,8 @@ def calculate_sic_matrix(
         bad = int(np.argmax(~np.isfinite(a)))
         raise ValueError(f'accel_g contains non-finite value at index {bad}: {a[bad]}')
 
-    # HIC convention: magnitude
-    a = np.abs(a)
+    # Positive-only convention: ignore negative acceleration
+    a = np.maximum(a, 0.0)
 
     n = int(a.size)
     dt = 1.0 / float(sample_rate_hz)
