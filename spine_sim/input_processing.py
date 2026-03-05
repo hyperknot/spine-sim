@@ -27,17 +27,23 @@ def process_input(
 
     Returns:
         Tuple of (time_s, accel_g, info_dict).
+
+    accel_g is the acceleration signal used to drive the simulation:
+      - uniform-resampled
+      - CFC-filtered unless bypassed due to high sample rate
     """
     series = parse_csv_series(path, ['time', 'time0', 't'], ['accel', 'acceleration'])
     series, sample_rate = resample_to_uniform(series)
     dt = 1.0 / sample_rate
 
     accel_raw = np.asarray(series.values, dtype=float)
-    # Bypass CFC filter for high sample rates (19000 Hz or higher)
+
+    # Bypass CFC filter for high sample rates (9900 Hz or higher).
     if sample_rate >= 9900:
         accel_filtered = accel_raw.copy()
     else:
         accel_filtered = np.asarray(cfc_filter(accel_raw.tolist(), sample_rate, cfc), dtype=float)
+
     t_all = np.asarray(series.time_s, dtype=float)
 
     total_ms = float((t_all[-1] - t_all[0]) * 1000.0) if t_all.size >= 2 else 0.0

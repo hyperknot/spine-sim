@@ -27,6 +27,7 @@ from spine_sim.settings import (
     req_str,
     resolve_path,
 )
+from spine_sim.sic import calculate_sic_matrix
 
 
 # Default IO
@@ -214,10 +215,18 @@ def run_simulate_drop(
 
     warn_threshold = float(model.warn_over_eps_per_s)
 
+    # SIC configuration (requested grid)
+    sic_windows_ms = [15, 36, 60, 100, 150, 200]
+    sic_exponents = [round(1.5 + 0.1 * i, 1) for i in range(16)]  # 1.5 ... 3.0 (inclusive)
+    sic_fieldnames = [
+        f'sic_w{w}_e{str(e).replace(".", "p")}' for w in sic_windows_ms for e in sic_exponents
+    ]
+
     for fpath in files:
         echo(f'\nProcessing {fpath.name}...')
 
-        t_in, a_in_g, info = process_input(
+        # This is the CFC-filtered *input* acceleration (in g) on a uniform grid.
+        t_in, a_cfc_g, info = process_input(
             fpath,
             cfc=float(req_float(config, ['drop', 'cfc'])),
             sim_duration_ms=sim_duration_ms,
@@ -226,12 +235,22 @@ def run_simulate_drop(
             freefall_threshold_g=float(req_float(config, ['drop', 'freefall_threshold_g'])),
         )
 
-        t = np.asarray(t_in, dtype=float)
-        a_in_g = np.asarray(a_in_g, dtype=float)
+        t_in = np.asarray(t_in, dtype=float)
+        a_cfc_g = np.asarray(a_cfc_g, dtype=float)
 
+        # SIC is computed ONLY from the CFC-filtered input acceleration.
+        sic_cols = calculate_sic_matrix(
+            a_cfc_g,
+            sample_rate_hz=float(info['sample_rate_hz']),
+            window_ms_list=sic_windows_ms,
+            exponents=sic_exponents,
+            column_prefix='sic',
+        )
+
+        # Simulation uses interpolated version of the same filtered input.
         t, a_g = _interpolate_to_internal_dt(
-            t,
-            a_in_g,
+            t_in,
+            a_cfc_g,
             dt_internal_s=dt_internal_s,
             duration_s=duration_s,
         )
@@ -401,25 +420,25 @@ def run_simulate_drop(
             echo(f'  Buttocks remaining apex thickness min: {h_remain_min_mm:.2f} mm')
         echo(f'  max_eps_any: {eps_smooth_max:.2f} 1/s')
 
-        summary.append(
-            {
-                'filename': fpath.name,
-                'base_accel_peak_g': peak_base_g,
-                'peak_T12L1_kN': peak_t12_kN,
-                'time_to_peak_T12L1_ms': t_peak_ms,
-                'peak_buttocks_kN': peak_butt_kN,
-                'buttocks_mode': model.buttocks_mode,
-                'buttocks_profile': model.buttocks_active_profile,
-                'buttocks_apex_thickness_mm': model.buttocks_apex_thickness_m * 1000.0,
-                'buttocks_k1_n_per_m': model.buttocks_k1_n_per_m,
-                'buttocks_k2_mult': model.buttocks_k2_mult,
-                'buttocks_c_ns_per_m': model.buttocks_c_ns_per_m,
-                'buttocks_x_idle_mm': x_idle_m * 1000.0,
-                'buttocks_max_compression_reached_mm': butt_comp_max_mm,
-                'buttocks_max_extra_compression_mm': x_extra_max_mm,
-                'buttocks_min_remaining_apex_thickness_mm': h_remain_min_mm,
-            }
-        )
+        row = {
+            'filename': fpath.name,
+            'base_accel_peak_g': peak_base_g,
+            'peak_T12L1_kN': peak_t12_kN,
+            'time_to_peak_T12L1_ms': t_peak_ms,
+            'peak_buttocks_kN': peak_butt_kN,
+            'buttocks_mode': model.buttocks_mode,
+            'buttocks_profile': model.buttocks_active_profile,
+            'buttocks_apex_thickness_mm': model.buttocks_apex_thickness_m * 1000.0,
+            'buttocks_k1_n_per_m': model.buttocks_k1_n_per_m,
+            'buttocks_k2_mult': model.buttocks_k2_mult,
+            'buttocks_c_ns_per_m': model.buttocks_c_ns_per_m,
+            'buttocks_x_idle_mm': x_idle_m * 1000.0,
+            'buttocks_max_compression_reached_mm': butt_comp_max_mm,
+            'buttocks_max_extra_compression_mm': x_extra_max_mm,
+            'buttocks_min_remaining_apex_thickness_mm': h_remain_min_mm,
+        }
+        row.update(sic_cols)
+        summary.append(row)
 
     summary_filename = output_filename or 'summary.csv'
     summary_path = out_dir / summary_filename
@@ -439,10 +458,12 @@ def run_simulate_drop(
         'buttocks_max_compression_reached_mm',
         'buttocks_max_extra_compression_mm',
         'buttocks_min_remaining_apex_thickness_mm',
-    ]
+    ] + sic_fieldnames
+
     with open(summary_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(summary)
+
     echo(f'\nResults written to {summary_path}')
     return summary
