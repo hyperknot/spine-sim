@@ -529,6 +529,15 @@ def main():
     )
     ap.add_argument("--csv", default=None, help="Path to CSV file (default: <subdir>/summary.csv).")
     ap.add_argument("--target", default="peak_T12L1_kN", help="Target column (default: peak_T12L1_kN).")
+    ap.add_argument(
+        "--min-force-kn",
+        type=float,
+        default=None,
+        help=(
+            "If set, keep only rows where force column >= this kN value. "
+            "Uses peak_T12L1_kN when present, otherwise uses --target."
+        ),
+    )
     ap.add_argument("--sic-prefix", default="sic_", help="Prefix for SIC columns (default: sic_).")
     ap.add_argument("--min-n", type=int, default=5, help="Minimum non-NaN rows required to score a column (default: 5).")
 
@@ -656,6 +665,8 @@ def main():
         eprint(f"Target column not found: {args.target}")
         sys.exit(2)
 
+    force_col = "peak_T12L1_kN" if "peak_T12L1_kN" in df.columns else args.target
+
     sic_cols_all = [c for c in df.columns if c.startswith(args.sic_prefix)]
     if not sic_cols_all:
         eprint(f"No SIC columns found with prefix '{args.sic_prefix}'.")
@@ -663,11 +674,24 @@ def main():
 
     ensure_dir(out_dir)
 
-    # Numeric coercion for target + all SIC cols
-    df_num = to_numeric_frame(df, [args.target, *sic_cols_all])
+    # Numeric coercion for target + force column + all SIC cols
+    numeric_cols = list(dict.fromkeys([args.target, force_col, *sic_cols_all]))
+    df_num = to_numeric_frame(df, numeric_cols)
 
     n_total = len(df_num)
     n_target_non_nan = int(df_num[args.target].notna().sum())
+
+    if args.min_force_kn is not None:
+        keep_mask = df_num[force_col] >= args.min_force_kn
+        keep_count = int(keep_mask.fillna(False).sum())
+        drop_count = n_total - keep_count
+        df_num = df_num.loc[keep_mask.fillna(False)].reset_index(drop=True)
+        n_total = len(df_num)
+        n_target_non_nan = int(df_num[args.target].notna().sum())
+        print(
+            f"Applied force filter: {force_col} >= {args.min_force_kn:g} kN "
+            f"(kept {keep_count}, dropped {drop_count})"
+        )
     print(f"Source: {source_label}")
     print(f"Loaded {source_csv_label}")
     print(f"Rows total: {n_total}")
@@ -760,7 +784,7 @@ def main():
         else:
             print("Could not create best plot (insufficient data).")
 
-    kn_col = "peak_T12L1_kN" if "peak_T12L1_kN" in df_num.columns else args.target
+    kn_col = force_col
     input_sorted_path = write_input_files_sorted_by_sic(
         df_num=df_num,
         subdir_paths=input_export_subdir_paths,

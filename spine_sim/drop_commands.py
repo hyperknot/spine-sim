@@ -216,7 +216,7 @@ def run_simulate_drop(
     warn_threshold = float(model.warn_over_eps_per_s)
 
     # SIC configuration (requested grid)
-    sic_windows_ms = [15, 36, 60, 100, 150, 200]
+    sic_windows_ms = [25, 30, 36, 40, 45, 50, 60, 100]
     sic_exponents = [round(1.0 + 0.1 * i, 1) for i in range(31)]  # 1.0 ... 3.0 (inclusive)
     sic_fieldnames = [
         f'sic_w{w}_e{str(e).replace(".", "p")}' for w in sic_windows_ms for e in sic_exponents
